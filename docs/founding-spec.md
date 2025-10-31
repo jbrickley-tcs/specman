@@ -81,6 +81,16 @@ An implementation MUST have a friendly name that can be used to refer to the imp
 ### Implementing Language
 
 An implementation MUST declare its implementing language – the language which the implementation uses for defining concrete code.
+An implementing language identifier SHOULD be specified as a short string. The identifier SHOULD the one at the end of source files for the language.
+
+Examples:
+
+|Implementing Language|Language Identifier|
+|-|-|
+| Rust | rs |
+| C# | cs |
+| C++ | cpp |
+| Javascript | js |
 
 - An implementation MUST have one primary implementing language.
 - An implementation MAY have one or more secondary implementing languages.
@@ -109,6 +119,7 @@ An implementation MAY reference one or more libraries.
 - A library reference SHOULD include a justification.
 - A library reference SHOULD include a description of the library's functionality.
 - A library reference MAY include a listed version number or tag (e.g. "1.0.0", "latest")
+- A library reference SHOULD be in the format of `name@version`, but MAY be formatted otherwise to appropriately fit an implementing language's library formats.
 
 #### Data Models
 

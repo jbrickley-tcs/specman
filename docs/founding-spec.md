@@ -16,7 +16,7 @@ Specifications are a set of requirements that must be met for a system or a conc
 
 A specification MAY define other specifications as dependencies, to be used as a framework or define concepts.
 
-- A specification MAY depend on one or more other specifications.
+- A specification MAY have one or more dependencies.
 - A dependency MAY be marked as optional.
 - Dependencies MUST NOT create a circular dependency graph.
 - The specification MUST NOT mutate, or otherwise contradict, the contents of any dependencies.

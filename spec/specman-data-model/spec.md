@@ -103,22 +103,22 @@ Example:
 
 ### Standalone Specifications
 
-> [!NOTE] Standalone specifications are experimental, and may not be added to the non-draft version.
+> ![NOTE] Standalone specifications are experimental, and may not be added to the non-draft version.
 
 A specification MAY NOT require a reference to an implementation to be used. For example, when a specification defines usage in a common format that can be used without requiring explicit implementation details (e.g. CLI commands) 
 
 When a specification does not require an implementation, this SHOULD be recorded in the spec's top-of-file YAML frontmatter using a boolean field named `requires_implementation`. If `requires_implementation` is omitted, implementations and tooling MUST treat the value as `true` by default.
 
-### Dependencies
+### [Dependencies](../../docs/founding-spec.md#dependencies)
 
-Each [dependency](../../docs/founding-spec.md#dependencies) item MUST be represented as one of the following forms:
-
-- A string: a local file path or a URL to another specification document.
-- An object with two fields:
-  - `ref` (string): a local file path or a URL pointing to the dependency.
-  - `optional` (boolean): when true, indicates this dependency is optional.
-
-Processors SHOULD accept both a single string and an object form and SHOULD treat unspecified `optional` as `false` by default.
+- Dependencies MUST be either another specification or an external resource that contains documentation detailing a specification.
+  - If the dependency is an external resource, it MUST be available in a plaintext format, in such a way that it could be read through a code editor.
+  - Tooling MAY omit processing external dependencies outside of presenting the content if they are not formatted in markdown.
+- Each dependency item MUST be represented as one of the following forms:
+  - A string: a local file path or a URL to another specification document.
+  - An object with two fields:
+    - `ref` (string): a local file path or a URL pointing to the dependency.
+    - `optional` (boolean): when true, indicates this dependency is optional.
 
 If a concept or key entity is referenced from one of the dependencies, it SHOULD be marked with an [inline link](https://spec.commonmark.org/0.31.2/#inline-link).
 

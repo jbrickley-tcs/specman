@@ -217,6 +217,11 @@ These objects MUST adhere to the listed fields below.
 - APIs signatures MUST be contained inside of a [fenced code block](https://spec.commonmark.org/0.31.2/#fenced-code-blocks).
   - If the implementation language of the code block has language code, it should be provided in the info string of the code block.
 - Each API listed SHOULD contain an inline link to corresponding concepts or key entities, if used.
+- If creating API information for a key entity, the structure of the entity MUST be included.
+  - The structure of an entity MAY be in either markdown or the code of the implementing language.
+    - When using markdown, the format SHOULD be an unordered list using [code spans](https://spec.commonmark.org/0.31.2/#code-spans).
+    - When using code, the example SHOULD only show the bare structure - the fields of a structure, and nothing more.
+  - The structure MUST define the data type for each field.
 
 
 ### Implementation Metadata

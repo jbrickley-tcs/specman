@@ -192,6 +192,13 @@ These objects MUST adhere to the listed fields below.
   - each library in this list MAY be formed as an object if additional metadata is required.
     - if it is an object, the library reference MUST be stored under the field `name`.
 
+### Implementation Locators
+
+Implementation details are usually associated with code, or optionally as a library. As a result, details are required to properly reference implementations within other implementations if needed.
+- Implementation code MAY be referenced as a path, relative to the [Specman workspace](#specman-workspace).
+  - The code location MUST lead to a folder.
+- If the implementation has a library, it SHOULD be listed in the implementation.
+
 ### [References](../../docs/founding-spec.md#references)
 
 Implementations MAY reference external artifacts relied upon by the implementation. This is functionally equivalent to [specification dependencies](#dependencies), but MUST be expressed exclusively as a list of objects. 
@@ -220,6 +227,11 @@ The frontmatter fields MUST be formatted as listed below.
 - `spec`: a local path or URL to the target specification
 - `name`: the [implementation name](../../docs/founding-spec.md#implementation-name)
   - if this field is omitted, processors MUST use the parent directory as the implementation name.
+- `location`: the location of the source code as defined in [implementation locators](#implementation-locators)
+  - this field MAY be omitted if the implementation does not have an available source.
+- `library`: the name of the library defined by this implementation, if one is available.
+  - this MUST take the shape of a string or object, as defined by the `libraries` field in [the implementing language model](#implementing-language)
+  - this field MAY be omitted if there is no library available.
 - `primary_language`: the primary [`language`](#implementing-language)
 - `secondary_languages`: a list of [`language`](#implementing-language)
   - this field MAY be omitted if no secondary languages are present.
@@ -230,7 +242,10 @@ Example:
 ---
 spec: ../path/to/spec.md
 name: implementation-name
-properties:
+location: ../path/to/code
+library:
+  name: implementation-library@1.0.0
+  extra_data: 5
 primary_language:
   language: lang
   properties:

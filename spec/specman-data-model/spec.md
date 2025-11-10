@@ -2,6 +2,7 @@
 version: 1.0.0
 dependencies:
   - ../../docs/founding-spec.md
+  - https://spec.commonmark.org/0.31.2/
 ---
 
 ## Terminology & References
@@ -30,7 +31,7 @@ The primary scratch pad document inside each subdirectory MUST be named `scratch
 
 ### Target Artifact
 
-A scratch pad MUST have a target artifact in the form of either a specification or an implementation associated with it. This artifact MUST be a relative file path, or a URL if the artifact is external.
+A scratch pad MUST have a target artifact, in the form of either a specification or an implementation, associated with it. This artifact MUST be a relative file path, or a URL if the artifact is external.
 These are mutually exclusive, as if an implementation is referenced, then its underlying specification can be implicitly retrieved.
 
 ### Work Type
@@ -55,14 +56,15 @@ A work type can be one of the following:
 Scratch pads SHOULD have a Git branch associated with them. A branch MAY be excluded if a Git repository is not present in the SpecMan workspace.
 
 Git branches MUST follow a naming scheme of:
+
 ```
-{specification_name}/{work_type}/{scratch_pad_name}
+{target_name}/{work_type}/{scratch_pad_name}
 ```
 
 The meaning of these labels are defined below.
 
-- `specification_name`: the name of the specification 
-- `work_type`: the scratch pad work type
+- `target_name`: the name of the target artifact
+- `work_type`: the scratch pad [work type](#work-type)
 - `scratch_pad_name`: the name of the scratch pad
 
 ### Scratch Pad Metadata
@@ -72,23 +74,23 @@ Frontmatter fields MUST be formatted as below.
 
 - `target`: the target artifact
 - `branch`: the git branch
+  - this field MAY be omitted if there is no Git workspace.
 
 ## [Specifications](../../docs/founding-spec.md#specifications)
 
 Specifications MUST be written in Markdown. Compliant specifications and contributors SHOULD author and publish specification documents using the Markdown format so they can be rendered, reviewed, and processed consistently by tooling.
 
-
 ### Specification Headings
 
-Specifications SHOULD include a top-level heading titled "Terminology & References" placed near the top of the file (immediately below the main title or any YAML frontmatter).
-
-That heading SHOULD include a reference to RFC 2119 and a short statement indicating how the RFC 2119 normative keywords (for example, MUST, SHOULD, MAY, etc.) are to be interpreted for that document.
-
-Other statements or notes SHOULD be added to this heading regarding referenced documents, but MAY be omitted or relocated under other headings as necessary.
+Each specification MUST categorize their content into [headings](https://spec.commonmark.org/0.31.2/#atx-headings).
+- Each heading within a specification MUST be unique to the implementation itself. 
+- Specifications SHOULD include a top-level heading titled "Terminology & References" placed near the top of the file (immediately below the main title or any YAML frontmatter).
+  - This heading SHOULD include a reference to RFC 2119 and a short statement indicating how the RFC 2119 normative keywords (for example, MUST, SHOULD, MAY, etc.) are to be interpreted for that document.
+  - Other statements or notes SHOULD be added to this heading regarding referenced documents, but MAY be omitted or relocated under other headings as necessary.
 
 ### Specification Layout
 
-Each specification MUST be stored in a folder named after the specification's short name.
+Each specification MUST be stored in a folder designated specifically for that specification.
 
 - Specification folders MUST be stored in a top level directory named `spec`.
 - Specification folders MUST NOT be nested inside other specification folders.
@@ -128,6 +130,8 @@ If a concept or key entity is referenced from one of the dependencies, it SHOULD
 Specifications should have front-matter at the beginning of the document to declare the above data.
 The frontmatter fields MUST be formatted as listed below.
 
+- `name`: the [specification name](../../docs/founding-spec.md#specification-name)
+  - if this field is omitted, processors MUST use the parent directory as the name.
 - `version`: the [specification version](../../docs/founding-spec.md#specification-version)
 - `dependencies`: a list of [`dependency`](#dependencies)
 
@@ -135,6 +139,7 @@ Example:
 
 ```yaml
 ---
+name: spec-name
 version: "1.0.0"
 dependencies:
   - ../other-spec.md
@@ -148,6 +153,14 @@ dependencies:
 
 Implementations MUST be authored as Markdown documents to support consistent rendering, review, and automated processing.
 Implementation documents MUST declare their frontmatter fields, including a `spec` field referencing the implemented specification as either a relative file path string or a URL.
+
+### Implementation Headings
+
+Each implementation MUST categorize their content into [headings](https://spec.commonmark.org/0.31.2/#atx-headings).
+- A heading SHOULD be a link if it is a direct reference to a specification concept or key entity.
+- Implementations SHOULD include a top-level heading titled "Terminology & References" placed near the top of the file (immediately below the main title or any YAML frontmatter).
+  - This heading SHOULD include a reference to RFC 2119 and a short statement indicating how the RFC 2119 normative keywords (for example, MUST, SHOULD, MAY, etc.) are to be interpreted for that document.
+  - Other statements or notes SHOULD be added to this heading regarding referenced documents, but MAY be omitted or relocated under other headings as necessary.
 
 ### Implementation Layout
 
@@ -176,10 +189,12 @@ These objects MUST adhere to the listed fields below.
   - this field MAY be omitted if defaults can be assumed or the language has no configurable properties
 - `libraries`: a list of strings to identify [used libraries](../../docs/founding-spec.md#libraries)
   - this field MAY be omitted if no libraries outside of the language-specific standard library are being used.
+  - each library in this list MAY be formed as an object if additional metadata is required.
+    - if it is an object, the library reference MUST be stored under the field `name`.
 
 ### [References](../../docs/founding-spec.md#references)
 
-Implementations MAY reference capturing external artifacts relied upon by the implementation. This is functionally equivalent to [specification dependencies](#dependencies), but MUST be expressed exclusively as a list of objects. 
+Implementations MAY reference external artifacts relied upon by the implementation. This is functionally equivalent to [specification dependencies](#dependencies), but MUST be expressed exclusively as a list of objects. 
 
 These objects MUST adhere to the listed fields below.
 
@@ -199,6 +214,25 @@ Implementations MUST specify YAML frontmatter at the top of the document.
 The frontmatter fields MUST be formatted as listed below.
 
 - `spec`: a local path or URL to the target specification
+- `name`: the [implementation name](../../docs/founding-spec.md#implementation-name)
+  - if this field is omitted, processors MUST use the parent directory as the implementation name.
 - `primary_language`: the primary [`language`](#implementing-language)
 - `secondary_languages`: a list of [`language`](#implementing-language)
   - this field MAY be omitted if no secondary languages are present.
+
+Example:
+
+```yaml
+---
+spec: ../path/to/spec.md
+name: implementation-name
+properties:
+primary_language:
+  language: lang
+  properties:
+    lang-property: a
+  libraries:
+    - name: library@1.0.0
+      extra_data: 5
+---
+```

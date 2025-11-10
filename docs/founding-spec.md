@@ -26,6 +26,7 @@ A specification MAY define other specifications as dependencies, to be used as a
 A specification MUST have a friendly name that can be used to refer to the specification.
 
 - The name MUST be four words or less.
+    - Each word MUST be separated with hyphens.
 - The name MUST NOT contain verbs (e.g. add, edit, implement).
 - The name SHOULD contain keywords of the feature being defined by the specification.
 - The name SHOULD be in all lowercase.
@@ -98,7 +99,9 @@ An implementation MUST have a version that can be used to mark changes.
 ### Implementing Language
 
 An implementation MUST declare its implementing language – the language which the implementation uses for defining concrete code.
-An implementing language identifier SHOULD be specified as a short string. The identifier SHOULD the one at the end of source files for the language.
+
+- An implementing language identifier SHOULD be specified as a short string. The identifier SHOULD the one at the end of source files for the language.
+    - If there is no well known file identifier, the short name SHOULD be anything that properly identifies the language.
 
 Examples:
 
@@ -108,6 +111,7 @@ Examples:
 | C# | cs |
 | C++ | cpp |
 | Javascript | js |
+| JmesPath | jmespath |
 
 - An implementation MUST have one primary implementing language.
 - An implementation MAY have one or more secondary implementing languages.

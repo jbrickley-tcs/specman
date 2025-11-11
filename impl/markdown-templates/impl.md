@@ -3,7 +3,7 @@ name: markdown-templates
 version: "0.1.0"
 location: "templates"
 primary_language:
-  language: markdown@1.0.0
+  language: markdown@0.31.2
 ---
 
 # Implementation — Markdown Templates

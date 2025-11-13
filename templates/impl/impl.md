@@ -1,5 +1,5 @@
 ---
-spec: ../specs/target-spec.md
+spec: ../../spec/target-spec/spec.md
 name: your-implementation-name
 version: "1.0.0"
 location: ../relative/path/to/source
@@ -10,12 +10,13 @@ primary_language:
   properties: {}
   libraries: []
 secondary_languages: []
-# Add any references as needed.
 references:
   - ref: ../path/to/related-artifact.md
     type: specification
     optional: false
 ---
+
+<!-- AI TODO: Replace the placeholder metadata, remove unused fields, and ensure the `references` list only contains actual artifacts linked to this implementation. -->
 
 # Implementation — Replace With Descriptive Title
 

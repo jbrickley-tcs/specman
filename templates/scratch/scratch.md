@@ -5,6 +5,8 @@ work_type:
   feat: {}
 ---
 
+<!-- AI TODO: Update the front matter to the correct artifact, branch, and `work_type` object (`feat`, `ref`, or `revision`) before adding contextual content. -->
+
 # Scratch Pad — Replace With Focus Area
 
 <!-- Capture the problem statement, constraints, and outcomes expected for this effort. -->

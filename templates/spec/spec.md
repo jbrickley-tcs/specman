@@ -2,17 +2,20 @@
 name: your-spec-name
 version: "1.0.0"
 dependencies:
-  - ref: ../relative-or-url.md
+  - ref: https://raw.githubusercontent.com/jbrickley-tcs/specman/refs/heads/main/spec/specman-data-model/spec.md
     optional: false
 ---
 
-# Specification — Replace With Descriptive Title
+<!-- AI TODO: Update the front matter fields to reflect the real specification metadata and retain a dependency on the SpecMan data model unless an official successor is adopted. -->
+
+# Specification — <!-- Replace With Descriptive Title -->
 
 <!-- Concisely describe the scope of the specification and its intent. -->
 
 ## Terminology & References
 
-This document uses the normative keywords defined in [RFC 2119](https://www.rfc-editor.org/rfc/rfc2119). Summarize any additional references or standards that readers SHOULD review before consuming this specification.
+This document uses the normative keywords defined in [RFC 2119](https://www.rfc-editor.org/rfc/rfc2119). 
+<!-- Summarize any additional references or standards that readers SHOULD review before consuming this specification -->
 
 ## Concepts
 

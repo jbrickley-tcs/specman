@@ -19,6 +19,16 @@ This document uses the normative keywords defined in [RFC 2119](https://www.rfc-
 
 ## Concepts
 
+### Concept: Workspace Discovery
+
+Workspace discovery ensures every SpecMan-aware tool can deterministically locate the active workspace root and its `.specman` directory from any starting location.
+
+- The implementation MUST identify the workspace root by scanning the current directory and its ancestors for the nearest `.specman` folder, treating the containing directory as canonical.
+- When no `.specman` folder exists along the ancestry chain, the implementation MUST return a descriptive error that callers MAY surface directly to users.
+- Workspace discovery utilities MUST expose the absolute path to both the workspace root and the `.specman` directory so downstream services can reference shared metadata without recomputing filesystem state.
+- Resolved workspace metadata MUST remain consistent with the [SpecMan Data Model](../specman-data-model/spec.md) rules for SpecMan workspaces and MUST reuse existing data-model entities when emitting structured results.
+- Implementations MAY cache the active workspace root for the lifetime of a command invocation, but they MUST revalidate that the `.specman` folder still exists before reusing cached paths.
+
 ### Concept: Data Model Backing Implementation
 
 This concept ties runtime behavior to the data model’s authoritative structures.
@@ -36,6 +46,9 @@ Dependency mapping provides visibility into upstream and downstream relationship
 - The implementation MUST construct dependency trees that enumerate upstream providers, downstream consumers, and full transitive relationships.
 - Dependency lookups MUST return results in upstream, downstream, and aggregate forms to support targeted impact analysis.
 - Tree traversal APIs SHOULD expose both hierarchical and flattened views to accommodate varied client needs.
+- Dependency tree construction MUST accept a target path pointing to either a specification or implementation Markdown artifact and MUST normalize that path relative to the active workspace root before traversal begins.
+- The resolver MUST support workspace-local identifiers of the form `spec://{spec-name}` and `impl://{impl-name}`, mapping them to `{workspace}/spec/{spec-name}/spec.md` and `{workspace}/impl/{impl-name}/impl.md` respectively.
+- Requests that reference targets outside of the detected workspace MUST fail with an error that explains the workspace boundary violation.
 
 ### Concept: Template Orchestration
 
@@ -103,10 +116,14 @@ Defines the characteristics and template linkages for scratch pad variants.
 - Any serialization emitted here MUST validate against the schemas mandated by the data model specification.
 - Breaking changes to function signatures or behaviors MUST trigger a major version increment of this specification.
 - Dependency inspection APIs MUST produce results that include upstream, downstream, and full dependency sets for any supported artifact.
+- Workspace discovery routines MUST stop processing and return an error when no `.specman` folder exists in the current directory ancestry.
+- Workspace discovery helpers MUST return absolute, normalized paths for both the workspace root and `.specman` folder, and MUST revalidate cached paths before reuse.
 - Template rendering routines MUST require callers to supply all `{{}}` token values before materialization.
 - Lifecycle operations MUST enforce template usage for new specifications, implementations, and scratch pads.
 - Scratch pad creation workflows MUST offer selectable profiles and MUST apply the template associated with the chosen profile.
 - Deletion workflows MUST fail when dependencies exist and MUST include the complete dependency tree in the failure response.
+- Dependency traversal MUST reject target paths that fall outside the active workspace root and MUST describe the violation.
+- `spec://` and `impl://` identifiers MUST resolve to `{workspace}/spec/{name}/spec.md` and `{workspace}/impl/{name}/impl.md` respectively; missing targets MUST surface an error that callers MAY relay to users.
 
 ## Additional Notes
 

@@ -26,6 +26,7 @@ The `specman-library` implementation delivers the reusable library surface defin
   - `serde_json` for canonical serialization/deserialization of request and response payloads.
   - `markdown` for parsing templates and emitting deterministic Markdown outputs for generated specifications, implementations, and scratch pads.
 - **Secondary languages:** None. All orchestration, validation, and I/O run in Rust; shell glue or scripting layers consume the library through binary wrappers built from the same crate.
+```
 
 ## Implementation Details
 

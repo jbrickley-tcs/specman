@@ -1,25 +1,7 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-/// Semantic version tracking used across SpecMan entities.
-#[derive(
-    Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq, PartialOrd, Ord, Hash, Default,
-)]
-pub struct SemVer {
-    pub major: u64,
-    pub minor: u64,
-    pub patch: u64,
-}
-
-impl SemVer {
-    pub const fn new(major: u64, minor: u64, patch: u64) -> Self {
-        Self {
-            major,
-            minor,
-            patch,
-        }
-    }
-}
+pub use semver::Version as SemVer;
 
 /// Identifiers for the SpecMan entity families.
 #[derive(

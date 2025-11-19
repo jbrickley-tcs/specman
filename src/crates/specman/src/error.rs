@@ -9,6 +9,8 @@ pub enum SpecmanError {
     Template(String),
     #[error("dependency error: {0}")]
     Dependency(String),
+    #[error("workspace error: {0}")]
+    Workspace(String),
     #[error("serialization error: {0}")]
     Serialization(String),
     #[error("io error: {0}")]
@@ -26,6 +28,7 @@ impl SpecmanError {
         match self {
             SpecmanError::Template(msg) => SpecmanError::Template(format!("{ctx}: {msg}")),
             SpecmanError::Dependency(msg) => SpecmanError::Dependency(format!("{ctx}: {msg}")),
+            SpecmanError::Workspace(msg) => SpecmanError::Workspace(format!("{ctx}: {msg}")),
             SpecmanError::Serialization(msg) => {
                 SpecmanError::Serialization(format!("{ctx}: {msg}"))
             }

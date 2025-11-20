@@ -46,10 +46,13 @@ Dependency mapping provides visibility into upstream and downstream relationship
 - The implementation MUST construct dependency trees that enumerate upstream providers, downstream consumers, and full transitive relationships.
 - Dependency lookups MUST return results in upstream, downstream, and aggregate forms to support targeted impact analysis.
 - Tree traversal APIs SHOULD expose both hierarchical and flattened views to accommodate varied client needs.
-- Dependency tree construction MUST accept a target path pointing to either a specification or implementation Markdown artifact and MUST normalize that path relative to the active workspace root before traversal begins.
+- Implementations MUST expose a callable dependency-tree builder that accepts a filesystem path or HTTPS URL pointing to either a specification or implementation artifact and normalizes that locator relative to the active workspace root before traversal begins.
+- The tree builder MUST parse YAML front matter (when present) for dependencies or references, recursively resolve each upstream artifact, and continue traversal until the graph is fully explored or a cycle is encountered.
 - Resolvers MUST support filesystem paths (absolute or workspace-relative) and HTTPS URLs that point to Markdown specifications or implementations and MUST reuse workspace discovery results to normalize those inputs.
 - Requests that supply unsupported locator schemes MUST fail fast with a descriptive error that directs callers to use filesystem or HTTPS references instead of attempting implicit rewrites.
 - Requests that reference targets outside of the detected workspace MUST fail with an error that explains the workspace boundary violation.
+- Cycle detection MUST terminate traversal immediately and return a descriptive error that includes the partial tree gathered so far so callers can remediate invalid dependency graphs.
+- When a referenced dependency or implementation lacks front matter metadata, or when the dependency resolves to HTML or other plaintext without metadata, the tree builder MUST still add the artifact to the dependency set using the best available identifier (path or URL) and annotate the entry to indicate metadata was unavailable.
 
 ### Concept: Template Orchestration
 
@@ -121,6 +124,7 @@ Defines the characteristics and template linkages for scratch pad variants.
 - Any serialization emitted here MUST validate against the schemas mandated by the data model specification.
 - Breaking changes to function signatures or behaviors MUST trigger a major version increment of this specification.
 - Dependency inspection APIs MUST produce results that include upstream, downstream, and full dependency sets for any supported artifact.
+- Implementations MUST expose a callable dependency-tree builder API that accepts a filesystem path or HTTPS URL to a specification or implementation, normalizes that locator relative to the active workspace, and returns the aggregated dependency results.
 - Workspace discovery routines MUST stop processing and return an error when no `.specman` folder exists in the current directory ancestry.
 - Workspace discovery helpers MUST return absolute, normalized paths for both the workspace root and `.specman` folder, and MUST revalidate cached paths before reuse.
 - Template rendering routines MUST require callers to supply all `{{}}` token values before materialization.
@@ -128,7 +132,9 @@ Defines the characteristics and template linkages for scratch pad variants.
 - Scratch pad creation workflows MUST offer selectable profiles and MUST apply the template associated with the chosen profile.
 - Deletion workflows MUST fail when dependencies exist and MUST include the complete dependency tree in the failure response.
 - Dependency traversal MUST reject target paths that fall outside the active workspace root and MUST describe the violation.
-- Dependency traversal inputs MUST be limited to filesystem paths (absolute or workspace-relative) and HTTPS URLs pointing to Markdown specifications or implementations; unsupported schemes MUST trigger descriptive errors that instruct callers to use supported locators.
+- Dependency traversal inputs MUST be limited to filesystem paths (absolute or workspace-relative) and HTTPS URLs; unsupported schemes MUST trigger descriptive errors that instruct callers to use supported locators.
+- Cycle detection within dependency traversal MUST halt processing immediately and return an error that enumerates the path that produced the cycle so callers can remediate the offending artifacts.
+- When dependency traversal encounters references that lack front matter metadata (for example, HTML or other plaintext documentation), the traversal MUST add those artifacts to the dependency set using the best available identifier and annotate that metadata was unavailable instead of skipping the entry.
 - Creation workflows for specifications, implementations, and scratch pads MUST persist the rendered template artifacts (with populated tokens and required front matter) into the canonical workspace directories defined by the [SpecMan Data Model](../specman-data-model/spec.md), leveraging workspace discovery results to determine destinations; persisting additional entity or concept data structures is out of scope for this specification.
 - Lifecycle controllers MUST surface errors when filesystem persistence fails (for example, permissions, missing directories) so callers can remediate without corrupting the workspace.
 

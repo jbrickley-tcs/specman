@@ -1,3 +1,4 @@
+---
 spec: ../../spec/specman-core/spec.md
 name: specman-library
 version: "0.1.0"
@@ -72,6 +73,13 @@ pub trait DependencyMapping {
 
 - `dependency_tree` returns the aggregate `DependencyTree` described in the specification, including transitive nodes for use in lifecycle enforcement.
 - `upstream` and `downstream` provide filtered projections needed for targeted impact analysis per [Dependency Mapping Services](../../spec/specman-core/spec.md#concept-dependency-mapping-services).
+
+### Dependency Mapping Runtime
+
+- `FilesystemDependencyMapper` lives in `src/crates/specman/src/dependency_tree.rs` and serves as the concrete implementation of `DependencyMapping`. It wires a `WorkspaceLocator` (typically `FilesystemWorkspaceLocator`) together with a `ContentFetcher` so callers can resolve both filesystem paths and HTTPS locators while staying inside the active workspace boundary mandated by the spec.
+- `FilesystemDependencyMapper::new(locator)` bootstraps the mapper with the default HTTPS client. Tooling operating in restricted environments can inject a custom fetcher (e.g., offline cache, mocked HTTP) via `FilesystemDependencyMapper::with_fetcher(locator, fetcher)`.
+- Callers that already know the artifact type drive traversal through `dependency_tree(&ArtifactId)`, while ad-hoc analyses can use `dependency_tree_from_path` or `dependency_tree_from_url`. All entry points parse YAML front matter, infer identity when metadata is missing, and annotate `ArtifactSummary.metadata_status` so downstream consumers can detect fallbacks.
+- Cycle detection is enforced centrally inside the traversal engine; errors return `SpecmanError::Dependency` payloads that include the offending path and a serialized partial tree, giving lifecycle controllers enough context to block deletion flows safely.
 
 ```rust
 pub fn render_template(locator: &TemplateLocator, tokens: &TokenMap) -> Result<RenderedTemplate, SpecmanError> {

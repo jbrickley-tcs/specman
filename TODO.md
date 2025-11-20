@@ -1,6 +1,15 @@
 # TODO
 
 1. Add CLI
+2. Capture dependency-tree builder validation fixtures (see risks below).
+
+## Current Risks
+
+- **Remote fetch parity:** The HTTPS-backed dependency mapper currently relies on live network access. Add cached fixtures or feature flags so `FilesystemDependencyMapper::with_fetcher` can leverage offline mirrors during CI.
+- **Workspace fixture coverage:** Only synthetic workspaces are exercised today. Extend CI to run `cargo test -p specman` plus an integration pass over the real `spec/` and `impl/` trees to guard against future front-matter skew.
+- **Cycle remediation UX:** Diagnostics expose the offending path, but we still lack remediation examples in docs/CLI help. Track follow-up documentation.
+
+Run `cargo test -p specman` from `src/` whenever dependency mapping code changes to ensure filesystem, HTTPS, cycle, and metadata-fallback scenarios remain green.
 
 ## Desirables
 

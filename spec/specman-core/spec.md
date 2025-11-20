@@ -72,6 +72,10 @@ Lifecycle automation standardizes creation and deletion workflows for specificat
 - Creation tooling MUST cover all three artifact types (specifications, implementations, scratch pads) and MUST enforce the naming and metadata rules defined by the [SpecMan Data Model](../specman-data-model/spec.md) and [founding specification](../../docs/founding-spec.md).
 - Creation workflows MUST persist generated Markdown artifacts and supporting metadata into the canonical workspace locations (`spec/{name}/spec.md`, `impl/{name}/impl.md`, `.specman/scratchpad/{slug}/scratch.md`) using the paths returned by workspace discovery.
 - Persistence helpers MUST write the rendered template output (with all required tokens populated) together with its front matter or metadata; persisting additional representations of entities, concepts, or other runtime data structures is out of scope for this specification.
+- Lifecycle automation MUST expose metadata mutation helpers that accept a filesystem path or HTTPS URL to a specification or implementation, merge updated values into the YAML front matter, and leave the Markdown body unchanged.
+- Metadata mutation helpers MUST support adding dependencies or references by artifact locator and MUST be idempotent when the supplied locator already exists in the corresponding list.
+- Callers MUST be able to choose whether metadata mutation helpers immediately persist the updated artifact to disk or return the full document content; when returning content, the helpers MUST emit the complete file with differences limited to the front matter block.
+- Metadata mutation helpers MUST reuse the locator normalization, workspace-boundary enforcement, and supported-scheme validation rules defined for dependency traversal before applying edits.
 - Deletion workflows MUST refuse to proceed when dependent artifacts exist and MUST return a dependency tree describing all impacted consumers.
 - Scratch pad creation SHOULD support selectable profiles aligned with defined scratch pad types and MUST leverage corresponding templates.
 - Lifecycle controllers MUST expose a persistence interface that can round-trip newly created artifacts back onto disk and SHOULD surface explicit errors if the filesystem write fails so callers can remediate workspace permissions.
@@ -137,6 +141,9 @@ Defines the characteristics and template linkages for scratch pad variants.
 - Cycle detection within dependency traversal MUST halt processing immediately and return an error that enumerates the path that produced the cycle so callers can remediate the offending artifacts.
 - When dependency traversal encounters references that lack front matter metadata (for example, HTML or other plaintext documentation), the traversal MUST add those artifacts to the dependency set using the best available identifier and annotate that metadata was unavailable instead of skipping the entry.
 - Creation workflows for specifications, implementations, and scratch pads MUST persist the rendered template artifacts (with populated tokens and required front matter) into the canonical workspace directories defined by the [SpecMan Data Model](../specman-data-model/spec.md), leveraging workspace discovery results to determine destinations; persisting additional entity or concept data structures is out of scope for this specification.
+- Metadata mutation operations MUST reuse the dependency traversal validation flow (workspace boundary enforcement, supported locator schemes, YAML parsing guarantees) before applying edits to any artifact.
+- Metadata mutation operations MUST rewrite only the YAML front matter block and MUST either persist the updated artifact to its canonical path or return the full document with body content unchanged.
+- When metadata mutation operations add dependencies or references, they MUST treat the addition as idempotent, leaving the artifact untouched if the locator already exists.
 - Lifecycle controllers MUST surface errors when filesystem persistence fails (for example, permissions, missing directories) so callers can remediate without corrupting the workspace.
 
 ## Additional Notes

@@ -39,6 +39,8 @@ This concept ties runtime behavior to the data model’s authoritative structure
 - The implementation SHOULD emit data model validation errors that mirror normative constraints from the data model.
 - All exposed capabilities MUST operate exclusively on types defined in the [SpecMan Data Model](../specman-data-model/spec.md) and MUST document deterministic input and output expectations.
 - Implementations SHOULD maintain backward compatibility for these capabilities within a given major version of this specification.
+- Implementations MUST depend on a single major version of the [SpecMan Data Model](../specman-data-model/spec.md) at a time to avoid incompatible schema drift.
+- Any serialization emitted by these capabilities MUST validate against the schemas mandated by the data model specification before it is persisted or returned to callers.
 
 ### Concept: Dependency Mapping Services
 
@@ -63,22 +65,40 @@ Template orchestration governs how reusable content is discovered and rendered.
 - The system MUST accept template locators as absolute filesystem paths or HTTPS URLs targeting Markdown resources.
 - Special-purpose template functions SHOULD exist for common scenarios such as creating specifications, implementations, and scratch pads together with their work-type variants.
 - The runtime MUST NOT hardcode template content; it MUST resolve templates at runtime via the provided locator.
+- Template rendering routines MUST require callers to supply all `{{}}` token values before materialization.
+
+### Concept: Deterministic Execution
+
+Deterministic execution codifies behavioral guarantees so downstream consumers can rely on predictable, side-effect-aware APIs.
+
+- Consumers MUST treat all SpecMan Core functions as pure unless the documentation explicitly calls out side effects; implementers MUST document any deviations before release.
+- Breaking changes to function signatures or observable behaviors MUST trigger a major version increment of this specification so dependent tooling can coordinate adoption.
 
 ### Concept: Lifecycle Automation
 
 Lifecycle automation standardizes creation and deletion workflows for specifications, implementations, and scratch pads.
 
 - Automated creation flows MUST require an associated template locator and MUST validate that required tokens are supplied.
+- Lifecycle operations MUST enforce template usage for all new specifications, implementations, and scratch pads so generated artifacts remain data-model compliant.
 - Creation tooling MUST cover all three artifact types (specifications, implementations, scratch pads) and MUST enforce the naming and metadata rules defined by the [SpecMan Data Model](../specman-data-model/spec.md) and [founding specification](../../docs/founding-spec.md).
 - Creation workflows MUST persist generated Markdown artifacts and supporting metadata into the canonical workspace locations (`spec/{name}/spec.md`, `impl/{name}/impl.md`, `.specman/scratchpad/{slug}/scratch.md`) using the paths returned by workspace discovery.
 - Persistence helpers MUST write the rendered template output (with all required tokens populated) together with its front matter or metadata; persisting additional representations of entities, concepts, or other runtime data structures is out of scope for this specification.
-- Lifecycle automation MUST expose metadata mutation helpers that accept a filesystem path or HTTPS URL to a specification or implementation, merge updated values into the YAML front matter, and leave the Markdown body unchanged.
+- Lifecycle automation MUST provide direct integrations with the metadata mutation capabilities described in [Concept: Metadata Mutation](#concept-metadata-mutation).
+- Deletion workflows MUST refuse to proceed when dependent artifacts exist and MUST return a dependency tree describing all impacted consumers.
+- Scratch pad creation workflows MUST offer selectable profiles aligned with defined scratch pad types and MUST leverage corresponding templates.
+- Lifecycle controllers MUST expose a persistence interface that can round-trip newly created artifacts back onto disk and SHOULD surface explicit errors if the filesystem write fails so callers can remediate workspace permissions.
+
+### Concept: Metadata Mutation
+
+Metadata mutation ensures YAML front matter for specifications and implementations can be updated without rewriting the surrounding Markdown content.
+
+- Implementations MUST expose metadata mutation helpers that accept a filesystem path or HTTPS URL to a specification or implementation, merge updated values into the YAML front matter, and leave the Markdown body unchanged.
 - Metadata mutation helpers MUST support adding dependencies or references by artifact locator and MUST be idempotent when the supplied locator already exists in the corresponding list.
 - Callers MUST be able to choose whether metadata mutation helpers immediately persist the updated artifact to disk or return the full document content; when returning content, the helpers MUST emit the complete file with differences limited to the front matter block.
 - Metadata mutation helpers MUST reuse the locator normalization, workspace-boundary enforcement, and supported-scheme validation rules defined for dependency traversal before applying edits.
-- Deletion workflows MUST refuse to proceed when dependent artifacts exist and MUST return a dependency tree describing all impacted consumers.
-- Scratch pad creation SHOULD support selectable profiles aligned with defined scratch pad types and MUST leverage corresponding templates.
-- Lifecycle controllers MUST expose a persistence interface that can round-trip newly created artifacts back onto disk and SHOULD surface explicit errors if the filesystem write fails so callers can remediate workspace permissions.
+- Metadata mutation operations MUST reuse the dependency traversal validation flow (workspace boundary enforcement, supported locator schemes, YAML parsing guarantees) before applying edits to any artifact.
+- Metadata mutation operations MUST rewrite only the YAML front matter block and MUST either persist the updated artifact to its canonical path or return the full document with body content unchanged.
+- When metadata mutation operations add dependencies or references, they MUST treat the addition as idempotent, leaving the artifact untouched if the locator already exists.
 
 ## Key Entities
 
@@ -113,6 +133,7 @@ Controller responsible for enforcing lifecycle policies across specifications an
 - MUST orchestrate create and delete operations, delegating to dependency mapping and templating subsystems.
 - MUST terminate deletion attempts that would orphan dependents and MUST return the blocking dependency tree to the caller.
 - SHOULD integrate auditing hooks that capture lifecycle events for compliance tracking.
+- MUST surface explicit errors when filesystem persistence fails (for example, permissions or missing directories) so callers can remediate issues without corrupting the workspace.
 
 ### Entity: ScratchPadProfile
 
@@ -121,30 +142,6 @@ Defines the characteristics and template linkages for scratch pad variants.
 - MUST enumerate available scratch pad types alongside their required templates.
 - SHOULD expose optional configuration fields to tailor scratch pad content to team workflows.
 - MAY reuse `TemplateDescriptor` instances to avoid duplication across related profiles.
-
-## Constraints
-
-- This implementation MUST depend on a single major version of the [SpecMan Data Model](../specman-data-model/spec.md) at any given time.
-- Consumers MUST treat all functions as pure unless explicitly documented otherwise.
-- Any serialization emitted here MUST validate against the schemas mandated by the data model specification.
-- Breaking changes to function signatures or behaviors MUST trigger a major version increment of this specification.
-- Dependency inspection APIs MUST produce results that include upstream, downstream, and full dependency sets for any supported artifact.
-- Implementations MUST expose a callable dependency-tree builder API that accepts a filesystem path or HTTPS URL to a specification or implementation, normalizes that locator relative to the active workspace, and returns the aggregated dependency results.
-- Workspace discovery routines MUST stop processing and return an error when no `.specman` folder exists in the current directory ancestry.
-- Workspace discovery helpers MUST return absolute, normalized paths for both the workspace root and `.specman` folder, and MUST revalidate cached paths before reuse.
-- Template rendering routines MUST require callers to supply all `{{}}` token values before materialization.
-- Lifecycle operations MUST enforce template usage for new specifications, implementations, and scratch pads.
-- Scratch pad creation workflows MUST offer selectable profiles and MUST apply the template associated with the chosen profile.
-- Deletion workflows MUST fail when dependencies exist and MUST include the complete dependency tree in the failure response.
-- Dependency traversal MUST reject target paths that fall outside the active workspace root and MUST describe the violation.
-- Dependency traversal inputs MUST be limited to filesystem paths (absolute or workspace-relative) and HTTPS URLs; unsupported schemes MUST trigger descriptive errors that instruct callers to use supported locators.
-- Cycle detection within dependency traversal MUST halt processing immediately and return an error that enumerates the path that produced the cycle so callers can remediate the offending artifacts.
-- When dependency traversal encounters references that lack front matter metadata (for example, HTML or other plaintext documentation), the traversal MUST add those artifacts to the dependency set using the best available identifier and annotate that metadata was unavailable instead of skipping the entry.
-- Creation workflows for specifications, implementations, and scratch pads MUST persist the rendered template artifacts (with populated tokens and required front matter) into the canonical workspace directories defined by the [SpecMan Data Model](../specman-data-model/spec.md), leveraging workspace discovery results to determine destinations; persisting additional entity or concept data structures is out of scope for this specification.
-- Metadata mutation operations MUST reuse the dependency traversal validation flow (workspace boundary enforcement, supported locator schemes, YAML parsing guarantees) before applying edits to any artifact.
-- Metadata mutation operations MUST rewrite only the YAML front matter block and MUST either persist the updated artifact to its canonical path or return the full document with body content unchanged.
-- When metadata mutation operations add dependencies or references, they MUST treat the addition as idempotent, leaving the artifact untouched if the locator already exists.
-- Lifecycle controllers MUST surface errors when filesystem persistence fails (for example, permissions, missing directories) so callers can remediate without corrupting the workspace.
 
 ## Additional Notes
 

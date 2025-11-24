@@ -72,6 +72,51 @@ This document uses the normative keywords defined in [RFC 2119](https://www.rfc-
 
 - All `--dependencies` values MUST be validated for locator support (workspace-relative path or HTTPS URL) before writing them.
 
+##### `impl` command group
+
+- Scope: operations governing implementation artifacts stored under `impl/`.
+- Commands in this group MUST reuse workspace discovery results so paths resolve relative to the active SpecMan workspace and MUST enforce the implementation naming constraints defined by `specman-data-model` and the founding specification.
+
+###### `impl ls`
+
+- MUST enumerate every implementation discovered under `impl/` after resolving the workspace root.
+- Output MUST include, at minimum, the implementation name, the implementation version, and the targeted specification identifier derived from `spec` front matter (name plus version when available). Additional fields (such as primary language) MAY be included when available, but the required set MUST remain present and parseable without ANSI sequences.
+- Results MUST be emitted in a deterministic order (for example, lexical by implementation name) so tooling can diff outputs reliably.
+- Exit codes MUST follow the same rules as `status`: `EX_OK` when enumeration succeeds and `EX_DATAERR` (or another `sysexits` value) when parsing failures or workspace violations occur.
+
+###### `impl new`
+
+- MUST create a new implementation using the templates mandated by `specman-templates`, persisting output to `impl/{name}/impl.md` and refusing to overwrite existing implementations unless a future option explicitly allows it.
+- MUST require callers to identify the target specification via `--spec`. The flag MUST accept:
+  - A short specification name (matching a folder under `spec/`); the CLI MUST resolve this to the workspace-relative path before invoking template rendering.
+  - A workspace-relative filesystem path.
+  - An HTTPS URL. Unsupported schemes MUST fail fast with `EX_USAGE` and clear remediation guidance.
+- MUST require a single implementation name provided either as the positional argument immediately after `impl new` **or** via `--name`. When both are supplied the CLI MUST raise an error; when neither is supplied the CLI MUST fail with a missing-argument error.
+- MUST require `--language <identifier@version>` so the resulting front matter can satisfy the data-model implementing-language constraints. The flag MUST NOT have a default value.
+- Creation MUST validate that the supplied name satisfies implementation naming rules (≤4 words, hyphenated, includes the implementing language identifier) and MUST invoke template rendering only after resolving all template tokens, including HTML comment directives.
+
+##### `scratch` command group
+
+- Scope: scratch pad lifecycle operations rooted at `.specman/scratchpad/`.
+- Commands MUST enforce the scratch pad naming rules (`specman-data-model`), ensure each pad records a valid work type (`feat`, `ref`, or `revision`), and MUST keep the `target` field aligned with a specification or dependency locator.
+
+###### `scratch ls`
+
+- MUST enumerate every scratch pad directory under `.specman/scratchpad/`, including pads created outside this CLI session.
+- Output MUST list, at minimum, the scratch pad name (folder slug), work type, and target artifact path/URL. Additional metadata (branch, status) MAY be shown when present, but the required trio MUST remain parseable.
+- Results MUST be sorted deterministically (for example, lexical by scratch pad name) and MUST honor `--json` / `--verbose` flags in the same way as other command groups.
+- The command MUST surface missing metadata (for example, absent work type) as `EX_DATAERR` while still listing well-formed pads to aid remediation.
+
+###### `scratch new`
+
+- MUST create a new scratch pad using the default or overridden scratch template described in `specman-templates`, placing the result in `.specman/scratchpad/{scratch_name}/scratch.md`.
+- MUST require the following arguments:
+  - `--target <locator>`: a workspace-relative path or HTTPS URL pointing to the specification or dependency the scratch pad will address. Unsupported schemes MUST raise `EX_USAGE`.
+  - `--name <scratch-name>`: a slug meeting the scratch pad naming rules (all lowercase, hyphen separated, ≤4 words). No positional name is accepted for scratch pads to avoid ambiguity.
+  - `--type <feat|ref|revision>`: selects the work type; the CLI MUST reject unknown values and MUST populate the `work_type` object accordingly.
+- The command MUST persist the scratch pad front matter with the resolved branch name using the `{target_name}/revision|feat|ref/{scratch_name}` pattern and MUST leave template HTML comments intact until satisfied, matching the `specman-templates` governance rules.
+- Workspace discovery MUST be used to determine the destination `.specman` folder, and the command MUST fail when the folder is missing rather than attempting to create a workspace implicitly.
+
 ### Concept: Data Model Activation
 
 - The CLI MUST bundle a SpecMan data-model implementation (adapter) as an internal library so every installation has a compliant default aligned with the major version of `specman-data-model` declared in this specification.

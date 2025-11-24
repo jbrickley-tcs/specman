@@ -23,6 +23,7 @@ This document uses the normative keywords defined in [RFC 2119](https://www.rfc-
 - Every command MUST provide structured stdout/stderr suitable for automation, and SHOULD exit with non-zero codes on validation failures so scripts can detect errors deterministically.
 - Commands MUST accept positional arguments and flags that can be scripted without interactive prompts; optional interactive flows MAY exist but MUST have equivalent flag-driven variants.
 - The CLI MUST emit human-readable help text describing each command, argument, and related specification reference, and this help text MUST be accessible via `--help` for every command level.
+- Exit statuses MUST map to the POSIX constants defined in [`sysexits.h`](https://man7.org/linux/man-pages/man3/sysexits.h.3head.html); successful executions MUST use `EX_OK`, and failure scenarios MUST choose the closest matching constant (for example `EX_DATAERR` for validation failures) so automation can rely on consistent semantics across commands.
 
 ### Concept: Workspace Context Resolution
 
@@ -38,12 +39,45 @@ This document uses the normative keywords defined in [RFC 2119](https://www.rfc-
 - Delete commands MUST refuse to proceed when dependency analysis reveals downstream consumers unless the operator explicitly supplies `--force`; forced deletions MUST still print the blocking dependency tree, require explicit confirmation (flag or prompt), and MUST record in the command result that dependencies were overridden.
 - All lifecycle commands MUST persist results to the canonical workspace paths (`spec/`, `impl/`, `.specman/scratchpad/`) returned by workspace discovery, and MUST error when filesystem writes fail.
 
+#### Command Catalog
+
+##### `status`
+
+- Purpose: validate the entire workspace graph.
+- MUST parse every specification and implementation, invoke the `specman-core` dependency tree builder, and detect invalid references or circular dependencies before completing.
+- Exit codes MUST be deterministic: `EX_OK` for a healthy graph, `EX_DATAERR` for failures alongside the artifact identifiers and a concise summary of the missing reference or cycle.
+
+##### `spec` command group
+
+- Scope: operations that exclusively manage specification artifacts located under `spec/`.
+
+###### `spec ls`
+
+- MUST enumerate every specification discovered under `spec/`.
+- Output MUST include, at minimum, the specification name and version extracted from front matter and MUST be emitted in a deterministic order (for example lexical by name) so tools can diff outputs reliably.
+- MAY apply terminal emphasis to the active version when supported, but the raw text MUST remain parseable without ANSI sequences.
+
+###### `spec new`
+
+- MUST create a new specification using the mandated templates and MUST validate names according to `specman-data-model` before writing to disk.
+- Generated files MUST be persisted to `spec/{name}/spec.md`, and the command MUST refuse to overwrite an existing specification unless a future option explicitly allows it.
+- The following arguments MUST be honored in the listed precedence/order:
+
+| Argument | Purpose | Default / Notes |
+| --- | --- | --- |
+| positional-name | Optional positional value immediately after `spec new`; treated as the specification name when `--name` is absent. | `null` |
+| `--name <value>` | Explicit specification name; MUST override the positional value when both are present. | `null` |
+| `--dependencies <a,b,c>` | Comma-separated dependency locators inserted into the generated front matter. | `[]` |
+| `--version <semver>` | Version recorded in front matter. | `1.0.0` |
+
+- All `--dependencies` values MUST be validated for locator support (workspace-relative path or HTTPS URL) before writing them.
+
 ### Concept: Data Model Activation
 
 - The CLI MUST bundle a SpecMan data-model implementation (adapter) as an internal library so every installation has a compliant default aligned with the major version of `specman-data-model` declared in this specification.
-- Workspaces MAY reference alternative adapters (for example, via `.specman/config`), but the CLI MUST fall back to the bundled adapter whenever no override is provided or the override fails validation.
+- The bundled adapter MUST be the only supported adapter; the CLI MUST reject workspace configuration overrides that attempt to register alternative adapters and MUST emit an actionable error that reiterates the bundled-only policy.
 - CLI commands MUST serialize entities exactly as defined in the data model before persisting or emitting them, and MUST surface validation errors from the adapter verbatim to the caller.
-- When both the bundled adapter and any configured override are unavailable or incompatible, the CLI MUST fail the command with guidance describing how to remediate the adapter configuration.
+- If the bundled adapter fails to initialize or becomes incompatible with the workspace data, the CLI MUST fail the command and provide remediation guidance (for example, reinstalling the CLI or aligning workspace data with the supported adapter version).
 
 ### Concept: Template Integration & Token Handling
 

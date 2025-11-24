@@ -85,6 +85,10 @@ This document uses the normative keywords defined in [RFC 2119](https://www.rfc-
 - The CLI MUST require callers to supply every declared `{{token}}` before rendering; missing tokens MUST result in descriptive errors that reference the originating template and token name.
 - Template rendering MUST respect HTML comment directives embedded in templates and MUST only remove a directive after its instruction has been satisfied or explicitly recorded in the generated artifact.
 - The CLI SHOULD cache template metadata (required tokens, scenario type) for the duration of a command invocation to avoid redundant filesystem reads, but MUST NOT cache it across workspaces unless the template version is part of the cache key.
+- Workspaces MAY override the default templates by adding plaintext pointer files inside `.specman/templates/` whose filenames are all uppercase and describe the artifact type (for example, `SPEC`, `IMPL`, `SCRATCH`). Each pointer file MUST contain either a workspace-relative path (resolved from the workspace root) or an HTTPS URL to the desired Markdown template.
+- When a pointer file exists, the CLI MUST resolve its locator, verify the referenced resource is readable Markdown, and surface an actionable error if the locator is missing, outside the workspace (for filesystem paths), or uses an unsupported scheme.
+- When a pointer file is absent, the CLI MUST fall back to the catalog defaults under `templates/spec/`, `templates/impl/`, or `templates/scratch/` to remain aligned with the `specman-templates` specification.
+- Pointer files MUST be re-read on each command invocation so operators can change template sources without restarting the CLI, and their resolved locations MUST feed directly into `TemplateRenderPlan` creation.
 
 ### Concept: Observability & Error Surfacing
 

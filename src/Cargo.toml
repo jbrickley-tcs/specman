@@ -1,4 +1,5 @@
 [workspace]
 members = [
-    "crates/specman"
+    "crates/specman",
+    "crates/specman-cli"
 ]

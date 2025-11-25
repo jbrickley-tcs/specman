@@ -205,7 +205,9 @@ fn validate_reference(
 
 fn insert_dependency(mapping: &mut Mapping, locator: &str) -> Result<bool, SpecmanError> {
     let key = Value::String("dependencies".into());
-    let entry = mapping.entry(key).or_insert_with(|| Value::Sequence(Vec::new()));
+    let entry = mapping
+        .entry(key)
+        .or_insert_with(|| Value::Sequence(Vec::new()));
     let seq = entry
         .as_sequence_mut()
         .ok_or_else(|| SpecmanError::Template("`dependencies` must be a sequence".into()))?;
@@ -223,7 +225,9 @@ fn insert_reference(
     addition: &ReferenceAddition,
 ) -> Result<bool, SpecmanError> {
     let key = Value::String("references".into());
-    let entry = mapping.entry(key).or_insert_with(|| Value::Sequence(Vec::new()));
+    let entry = mapping
+        .entry(key)
+        .or_insert_with(|| Value::Sequence(Vec::new()));
     let seq = entry
         .as_sequence_mut()
         .ok_or_else(|| SpecmanError::Template("`references` must be a sequence".into()))?;
@@ -236,7 +240,10 @@ fn insert_reference(
     }
 
     let mut map = Mapping::new();
-    map.insert(Value::String("ref".into()), Value::String(addition.locator.clone()));
+    map.insert(
+        Value::String("ref".into()),
+        Value::String(addition.locator.clone()),
+    );
     if let Some(reference_type) = &addition.reference_type {
         map.insert(
             Value::String("type".into()),
@@ -375,11 +382,13 @@ mod tests {
 
         let result = mutator.mutate(request).expect("mutation succeeds");
         assert!(matches!(result.artifact.kind, ArtifactKind::Specification));
-        assert!(result
-            .persisted
-            .as_ref()
-            .map(|artifact| artifact.path.ends_with("spec/core/spec.md"))
-            .unwrap_or(false));
+        assert!(
+            result
+                .persisted
+                .as_ref()
+                .map(|artifact| artifact.path.ends_with("spec/core/spec.md"))
+                .unwrap_or(false)
+        );
 
         let contents = fs::read_to_string(spec_path).unwrap();
         assert!(contents.contains("dependencies"));
@@ -430,10 +439,11 @@ mod tests {
             persist: true,
         };
 
-        let duplicate_result = mutator
-            .mutate(duplicate_request)
-            .expect("second mutation");
-        assert!(duplicate_result.persisted.is_none(), "no-op should skip persist");
+        let duplicate_result = mutator.mutate(duplicate_request).expect("second mutation");
+        assert!(
+            duplicate_result.persisted.is_none(),
+            "no-op should skip persist"
+        );
 
         let contents = fs::read_to_string(impl_path).unwrap();
         let count = contents.matches("../../spec/spec-beta/spec.md").count();
@@ -504,10 +514,8 @@ mod tests {
         }
 
         let adapter = Arc::new(RecordingAdapter::default());
-        let mutator = MetadataMutator::with_adapter(
-            FilesystemWorkspaceLocator::new(&root),
-            adapter.clone(),
-        );
+        let mutator =
+            MetadataMutator::with_adapter(FilesystemWorkspaceLocator::new(&root), adapter.clone());
 
         let request = MetadataMutationRequest {
             path: base.canonicalize().unwrap(),

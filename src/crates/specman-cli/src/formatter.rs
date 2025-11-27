@@ -1,9 +1,11 @@
+use std::collections::BTreeMap;
 use std::process::ExitCode;
 
 use serde_json::json;
-use specman::dependency_tree::DependencyTree;
+use specman::dependency_tree::{ArtifactKind, ArtifactSummary, DependencyEdge, DependencyTree};
 
 use crate::commands::CommandResult;
+use crate::commands::dependencies::{self, DependencyScope, DependencyView};
 use crate::error::CliError;
 
 pub enum OutputFormat {
@@ -152,6 +154,9 @@ fn print_text(result: &CommandResult) {
             }
             print_dependency_tree(tree);
         }
+        CommandResult::DependencyTree { scope, view, tree } => {
+            print_dependency_view(*scope, *view, tree);
+        }
     }
 }
 
@@ -162,9 +167,145 @@ fn print_json(result: &CommandResult) -> Result<(), CliError> {
 }
 
 fn print_dependency_tree(tree: &DependencyTree) {
-    println!("    downstream dependents: {}", tree.downstream.len());
-    for edge in &tree.downstream {
-        let consumer = &edge.from.id.name;
-        println!("      - {}", consumer);
+    render_direction_section(
+        "Downstream",
+        tree,
+        DependencyView::Downstream,
+        /*indent_root=*/ true,
+    );
+}
+
+fn print_dependency_view(scope: DependencyScope, view: DependencyView, tree: &DependencyTree) {
+    println!(
+        "Dependency tree ({}) for {} '{}'",
+        dependencies::view_label(view),
+        dependencies::scope_label(scope),
+        tree.root.id.name
+    );
+
+    match view {
+        DependencyView::All => {
+            render_direction_section("Downstream", tree, DependencyView::Downstream, false);
+            render_direction_section("Upstream", tree, DependencyView::Upstream, false);
+        }
+        other => {
+            let title = capitalize(dependencies::view_label(other));
+            render_direction_section(&title, tree, other, false);
+        }
+    }
+}
+
+fn render_direction_section(
+    title: &str,
+    tree: &DependencyTree,
+    view: DependencyView,
+    indent_root: bool,
+) {
+    let edges = match view {
+        DependencyView::Downstream => &tree.downstream,
+        DependencyView::Upstream => &tree.upstream,
+        DependencyView::All => &tree.aggregate,
+    };
+
+    if view == DependencyView::All {
+        // The caller renders both sections separately when `--all` is selected, so this
+        // branch should never be hit in practice.
+        return;
+    }
+
+    println!("  {}: {} edge(s)", title, edges.len());
+    let prefix = if indent_root { "    " } else { "  " };
+    println!("{}{}", prefix, artifact_label(&tree.root));
+    if edges.is_empty() {
+        println!("{}  (none)", prefix);
+        return;
+    }
+
+    let children = build_children_map(edges, view);
+    let mut stack = Vec::new();
+    render_children(&tree.root, &children, format!("{prefix}"), &mut stack);
+}
+
+fn build_children_map(
+    edges: &[DependencyEdge],
+    view: DependencyView,
+) -> BTreeMap<String, Vec<ArtifactSummary>> {
+    let mut map: BTreeMap<String, Vec<ArtifactSummary>> = BTreeMap::new();
+
+    for edge in edges {
+        let (parent, child) = match view {
+            DependencyView::Downstream => (&edge.to, &edge.from),
+            DependencyView::Upstream => (&edge.from, &edge.to),
+            DependencyView::All => unreachable!("all view handled earlier"),
+        };
+        map.entry(parent.id.name.clone())
+            .or_default()
+            .push(child.clone());
+    }
+
+    for children in map.values_mut() {
+        children.sort_by(|a, b| a.id.name.cmp(&b.id.name));
+    }
+
+    map
+}
+
+fn render_children(
+    parent: &ArtifactSummary,
+    children_map: &BTreeMap<String, Vec<ArtifactSummary>>,
+    prefix: String,
+    stack: &mut Vec<String>,
+) {
+    if let Some(children) = children_map.get(&parent.id.name) {
+        stack.push(parent.id.name.clone());
+        for (index, child) in children.iter().enumerate() {
+            let connector = if index + 1 == children.len() {
+                "└──"
+            } else {
+                "├──"
+            };
+            let cycle = stack.contains(&child.id.name);
+            if cycle {
+                println!(
+                    "{}{} {} (cycle detected)",
+                    prefix,
+                    connector,
+                    artifact_label(child)
+                );
+                continue;
+            }
+            println!("{}{} {}", prefix, connector, artifact_label(child));
+            let next_prefix = format!(
+                "{}{}",
+                prefix,
+                if index + 1 == children.len() {
+                    "    "
+                } else {
+                    "│   "
+                }
+            );
+            render_children(child, children_map, next_prefix, stack);
+        }
+        stack.pop();
+    }
+}
+
+fn artifact_label(summary: &ArtifactSummary) -> String {
+    let kind = match summary.id.kind {
+        ArtifactKind::Specification => "spec",
+        ArtifactKind::Implementation => "impl",
+        ArtifactKind::ScratchPad => "scratch",
+    };
+    match summary.version.as_ref() {
+        Some(version) => format!("{} {}@{}", kind, summary.id.name, version),
+        None => format!("{} {}", kind, summary.id.name),
+    }
+}
+
+fn capitalize(input: &str) -> String {
+    let mut chars = input.chars();
+    match chars.next() {
+        Some(first) => format!("{}{}", first.to_ascii_uppercase(), chars.as_str()),
+        None => String::new(),
     }
 }

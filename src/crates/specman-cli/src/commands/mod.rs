@@ -1,7 +1,9 @@
 use serde::Serialize;
+use specman::dependency_tree::DependencyTree;
 
 use crate::error::ExitStatus;
 
+pub mod dependencies;
 pub mod implementation;
 pub mod scratch;
 pub mod spec;
@@ -53,6 +55,11 @@ pub enum CommandResult {
         forced: bool,
         tree: scratch::DeletionTree,
         removed_path: String,
+    },
+    DependencyTree {
+        scope: dependencies::DependencyScope,
+        view: dependencies::DependencyView,
+        tree: DependencyTree,
     },
 }
 

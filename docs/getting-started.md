@@ -66,7 +66,23 @@ specman status
 
 Expect `EX_OK` on success or `EX_DATAERR` with actionable diagnostics when something violates the rules.
 
-## 6. Keep Automation Aligned
+## 6. Inspect Dependency Trees
+Use the read-only `dependencies` subcommands to visualize upstream or downstream relationships without editing artifacts. Each command accepts the artifact slug (folder name) and honors mutually exclusive `--downstream|--upstream|--all` flags, defaulting to downstream when no flag is provided. Include `--json` to mirror the same `DependencyTree` payloads emitted by `specman status`.
+
+```bash
+# Downstream-only view for a specification
+specman spec dependencies specman-cli --downstream
+
+# Upstream dependencies for an implementation
+specman impl dependencies specman-cli-rust --upstream
+
+# Combined upstream/downstream view for a scratch pad
+specman scratch dependencies cli-deps-subcmd --all
+```
+
+The CLI validates slugs against workspace contents, reuses SpecMan Core's dependency mapper, and exits with `EX_USAGE` when multiple direction flags are combined.
+
+## 7. Keep Automation Aligned
 - **Templates stay authoritative:** Never edit a template's HTML comments unless the directive has been satisfied. They act as guardrails for AI systems and humans alike.
 - **Use scratch pads for real work:** They are not diary entries—they capture the analysis, questions, and tasks needed to modify a spec or implementation. Delete them only when downstream pads no longer depend on them.
 - **Reject bureaucracy:** If a task has nothing to do with defining or implementing behavior, it does not belong in SpecMan. The toolchain exists to replace Speckit's meandering prompt soup with clear, testable artifacts.

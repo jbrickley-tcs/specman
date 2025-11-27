@@ -3,12 +3,15 @@ use std::path::Path;
 
 use clap::{Arg, ArgAction, ArgMatches, Command};
 use serde::Serialize;
-use specman::dependency_tree::{ArtifactId, ArtifactKind, ArtifactSummary, DependencyTree};
+use specman::dependency_tree::{
+    ArtifactId, ArtifactKind, ArtifactSummary, DependencyMapping, DependencyTree,
+};
 use specman::front_matter::{self, RawFrontMatter};
 use specman::lifecycle::LifecycleController;
 use specman::template::{TemplateEngine, TokenMap};
 
 use crate::commands::CommandResult;
+use crate::commands::dependencies::{self, DependencyScope};
 use crate::context::CliSession;
 use crate::error::{CliError, ExitStatus};
 use crate::frontmatter::update_spec_document;
@@ -30,6 +33,7 @@ pub fn command() -> Command {
         .subcommand(spec_ls_command())
         .subcommand(spec_new_command())
         .subcommand(spec_delete_command())
+        .subcommand(spec_dependencies_command())
 }
 
 pub fn run(session: &CliSession, matches: &ArgMatches) -> Result<CommandResult, CliError> {
@@ -37,6 +41,7 @@ pub fn run(session: &CliSession, matches: &ArgMatches) -> Result<CommandResult, 
         Some(("ls", _)) => list_specs(session),
         Some(("new", sub)) => create_spec(session, sub),
         Some(("delete", sub)) => delete_spec(session, sub),
+        Some(("dependencies", sub)) => spec_dependencies(session, sub),
         _ => Err(CliError::new("unsupported spec command", ExitStatus::Usage)),
     }
 }
@@ -211,6 +216,58 @@ fn spec_delete_command() -> Command {
                 .action(ArgAction::SetTrue)
                 .help("Override dependency blockers after printing the dependency tree."),
         )
+}
+
+fn spec_dependencies_command() -> Command {
+    dependencies::with_direction_flags(
+        Command::new("dependencies")
+            .about("Render the dependency tree for a specification")
+            .arg(
+                Arg::new("name")
+                    .required(true)
+                    .value_name("NAME")
+                    .help("Specification slug (folder name)"),
+            ),
+    )
+}
+
+fn spec_dependencies(
+    session: &CliSession,
+    matches: &ArgMatches,
+) -> Result<CommandResult, CliError> {
+    let name = matches
+        .get_one::<String>("name")
+        .cloned()
+        .ok_or_else(|| CliError::new("spec name required", ExitStatus::Usage))?;
+    util::validate_slug(&name, "specification")?;
+
+    let spec_file = session
+        .workspace_paths
+        .spec_dir()
+        .join(&name)
+        .join("spec.md");
+    if !spec_file.is_file() {
+        return Err(CliError::new(
+            format!("specification {name} does not exist"),
+            ExitStatus::Usage,
+        ));
+    }
+
+    let view = dependencies::parse_view(matches)?;
+    let artifact = ArtifactId {
+        kind: ArtifactKind::Specification,
+        name,
+    };
+    let tree = session
+        .dependency_mapper
+        .dependency_tree(&artifact)
+        .map_err(CliError::from)?;
+
+    Ok(CommandResult::DependencyTree {
+        scope: DependencyScope::Specification,
+        view,
+        tree,
+    })
 }
 
 fn parse_dependencies(raw: Option<&String>) -> Result<Vec<String>, CliError> {

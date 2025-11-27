@@ -4,12 +4,15 @@ use std::path::{Path, PathBuf};
 use clap::{Arg, ArgAction, ArgMatches, Command};
 use serde::Serialize;
 use serde_yaml::Value;
-use specman::dependency_tree::{ArtifactId, ArtifactKind, ArtifactSummary, DependencyTree};
+use specman::dependency_tree::{
+    ArtifactId, ArtifactKind, ArtifactSummary, DependencyMapping, DependencyTree,
+};
 use specman::front_matter::{self, RawFrontMatter};
 use specman::lifecycle::LifecycleController;
 use specman::template::{TemplateEngine, TokenMap};
 
 use crate::commands::CommandResult;
+use crate::commands::dependencies::{self, DependencyScope};
 use crate::context::CliSession;
 use crate::error::{CliError, ExitStatus};
 use crate::frontmatter::update_impl_document;
@@ -34,6 +37,7 @@ pub fn command() -> Command {
         .subcommand(ls_command())
         .subcommand(new_command())
         .subcommand(delete_command())
+        .subcommand(dependencies_command())
 }
 
 pub fn run(session: &CliSession, matches: &ArgMatches) -> Result<CommandResult, CliError> {
@@ -41,6 +45,7 @@ pub fn run(session: &CliSession, matches: &ArgMatches) -> Result<CommandResult, 
         Some(("ls", _)) => list_impls(session),
         Some(("new", sub)) => create_impl(session, sub),
         Some(("delete", sub)) => delete_impl(session, sub),
+        Some(("dependencies", sub)) => impl_dependencies(session, sub),
         _ => Err(CliError::new("unsupported impl command", ExitStatus::Usage)),
     }
 }
@@ -242,6 +247,58 @@ fn delete_command() -> Command {
                 .action(ArgAction::SetTrue)
                 .help("Override dependency blockers after printing the dependency tree."),
         )
+}
+
+fn dependencies_command() -> Command {
+    dependencies::with_direction_flags(
+        Command::new("dependencies")
+            .about("Render the dependency tree for an implementation")
+            .arg(
+                Arg::new("name")
+                    .required(true)
+                    .value_name("NAME")
+                    .help("Implementation slug (folder name)"),
+            ),
+    )
+}
+
+fn impl_dependencies(
+    session: &CliSession,
+    matches: &ArgMatches,
+) -> Result<CommandResult, CliError> {
+    let name = matches
+        .get_one::<String>("name")
+        .cloned()
+        .ok_or_else(|| CliError::new("implementation name required", ExitStatus::Usage))?;
+    util::validate_slug(&name, "implementation")?;
+
+    let impl_file = session
+        .workspace_paths
+        .impl_dir()
+        .join(&name)
+        .join("impl.md");
+    if !impl_file.is_file() {
+        return Err(CliError::new(
+            format!("implementation {name} does not exist"),
+            ExitStatus::Usage,
+        ));
+    }
+
+    let view = dependencies::parse_view(matches)?;
+    let artifact = ArtifactId {
+        kind: ArtifactKind::Implementation,
+        name,
+    };
+    let tree = session
+        .dependency_mapper
+        .dependency_tree(&artifact)
+        .map_err(CliError::from)?;
+
+    Ok(CommandResult::DependencyTree {
+        scope: DependencyScope::Implementation,
+        view,
+        tree,
+    })
 }
 
 fn read_impl_summary(root: &Path, path: &Path) -> Result<ImplSummary, CliError> {

@@ -4,12 +4,13 @@ use std::path::Path;
 use clap::{Arg, ArgAction, ArgMatches, Command, ValueEnum, builder::EnumValueParser};
 use serde::Serialize;
 use serde_yaml::Mapping;
-use specman::dependency_tree::{ArtifactId, ArtifactKind, DependencyTree};
+use specman::dependency_tree::{ArtifactId, ArtifactKind, DependencyMapping, DependencyTree};
 use specman::front_matter::{self, RawFrontMatter};
 use specman::lifecycle::LifecycleController;
 use specman::template::{TemplateEngine, TokenMap};
 
 use crate::commands::CommandResult;
+use crate::commands::dependencies::{self, DependencyScope};
 use crate::context::CliSession;
 use crate::error::{CliError, ExitStatus};
 use crate::frontmatter::update_scratch_document;
@@ -50,6 +51,7 @@ pub fn command() -> Command {
         .subcommand(ls_command())
         .subcommand(new_command())
         .subcommand(delete_command())
+        .subcommand(dependencies_command())
 }
 
 pub fn run(session: &CliSession, matches: &ArgMatches) -> Result<CommandResult, CliError> {
@@ -57,6 +59,7 @@ pub fn run(session: &CliSession, matches: &ArgMatches) -> Result<CommandResult, 
         Some(("ls", _)) => list_scratchpads(session),
         Some(("new", sub)) => create_scratchpad(session, sub),
         Some(("delete", sub)) => delete_scratchpad(session, sub),
+        Some(("dependencies", sub)) => scratch_dependencies(session, sub),
         _ => Err(CliError::new(
             "unsupported scratch command",
             ExitStatus::Usage,
@@ -261,6 +264,58 @@ fn delete_command() -> Command {
                 .action(ArgAction::SetTrue)
                 .help("Override dependency blockers after printing the dependency tree."),
         )
+}
+
+fn dependencies_command() -> Command {
+    dependencies::with_direction_flags(
+        Command::new("dependencies")
+            .about("Render the dependency tree for a scratch pad")
+            .arg(
+                Arg::new("name")
+                    .required(true)
+                    .value_name("NAME")
+                    .help("Scratch pad slug (folder name)"),
+            ),
+    )
+}
+
+fn scratch_dependencies(
+    session: &CliSession,
+    matches: &ArgMatches,
+) -> Result<CommandResult, CliError> {
+    let name = matches
+        .get_one::<String>("name")
+        .cloned()
+        .ok_or_else(|| CliError::new("scratch pad name required", ExitStatus::Usage))?;
+    util::validate_slug(&name, "scratch pad")?;
+
+    let scratch_file = session
+        .workspace_paths
+        .scratchpad_dir()
+        .join(&name)
+        .join("scratch.md");
+    if !scratch_file.is_file() {
+        return Err(CliError::new(
+            format!("scratch pad {name} does not exist"),
+            ExitStatus::Usage,
+        ));
+    }
+
+    let view = dependencies::parse_view(matches)?;
+    let artifact = ArtifactId {
+        kind: ArtifactKind::ScratchPad,
+        name,
+    };
+    let tree = session
+        .dependency_mapper
+        .dependency_tree(&artifact)
+        .map_err(CliError::from)?;
+
+    Ok(CommandResult::DependencyTree {
+        scope: DependencyScope::ScratchPad,
+        view,
+        tree,
+    })
 }
 
 fn read_scratch_summary(root: &Path, path: &Path) -> Result<ScratchSummary, CliError> {

@@ -89,6 +89,7 @@ pub struct DependencyEdge {
     pub from: ArtifactSummary,
     pub to: ArtifactSummary,
     pub relation: DependencyRelation,
+    pub optional: bool,
 }
 
 /// Relationship classification for dependency edges.
@@ -127,8 +128,8 @@ impl DependencyTree {
             ArtifactKind::ScratchPad => self
                 .downstream
                 .iter()
-                .any(|edge| edge.from.id.kind == ArtifactKind::ScratchPad),
-            _ => !self.downstream.is_empty(),
+                .any(|edge| !edge.optional && edge.from.id.kind == ArtifactKind::ScratchPad),
+            _ => self.downstream.iter().any(|edge| !edge.optional),
         }
     }
 }
@@ -182,30 +183,32 @@ impl<L: WorkspaceLocator> FilesystemDependencyMapper<L> {
     ) -> Result<DependencyTree, SpecmanError> {
         let mut traversal = Traversal::new(workspace, self.fetcher.clone());
         let root = traversal.visit(&root_locator)?;
-        let mut aggregate: Vec<_> = traversal.edges.iter().cloned().collect();
+        let mut aggregate: BTreeSet<_> = traversal.edges.clone();
+
+        if let Some(root_path) = root_locator.workspace_path().map(Path::to_path_buf) {
+            let inventory = WorkspaceInventory::build(&traversal.workspace, self.fetcher.clone())?;
+            for dependent in inventory.dependents_of(&root_path) {
+                let edge = DependencyEdge {
+                    from: dependent.summary,
+                    to: root.clone(),
+                    relation: DependencyRelation::Downstream,
+                    optional: dependent.optional,
+                };
+                aggregate.insert(edge);
+            }
+        }
+
         let upstream: Vec<DependencyEdge> = aggregate
             .iter()
             .filter(|edge| matches!(edge.relation, DependencyRelation::Upstream))
             .cloned()
             .collect();
-        let mut downstream: Vec<DependencyEdge> = aggregate
+        let downstream: Vec<DependencyEdge> = aggregate
             .iter()
             .filter(|edge| matches!(edge.relation, DependencyRelation::Downstream))
             .cloned()
             .collect();
-
-        if root.id.kind == ArtifactKind::ScratchPad {
-            let dependents = collect_scratchpad_dependents(&root, &traversal.workspace)?;
-            for dependent in dependents {
-                let edge = DependencyEdge {
-                    from: dependent,
-                    to: root.clone(),
-                    relation: DependencyRelation::Downstream,
-                };
-                aggregate.push(edge.clone());
-                downstream.push(edge);
-            }
-        }
+        let aggregate: Vec<DependencyEdge> = aggregate.into_iter().collect();
 
         Ok(DependencyTree {
             root,
@@ -277,6 +280,19 @@ struct ArtifactDocument {
 #[derive(Clone, Debug)]
 struct ArtifactDependency {
     locator: ArtifactLocator,
+    optional: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum DependencyResolutionMode {
+    Strict,
+    BestEffort,
+}
+
+impl DependencyResolutionMode {
+    fn is_strict(self) -> bool {
+        matches!(self, Self::Strict)
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -325,6 +341,13 @@ impl ArtifactLocator {
         match self {
             ArtifactLocator::File(path) => path.parent().map(Path::to_path_buf),
             _ => None,
+        }
+    }
+
+    fn workspace_path(&self) -> Option<&Path> {
+        match self {
+            ArtifactLocator::File(path) => Some(path.as_path()),
+            ArtifactLocator::Url(_) => None,
         }
     }
 
@@ -406,12 +429,17 @@ impl Traversal {
         }
 
         self.stack.push(key.clone());
-        let document = ArtifactDocument::load(locator, &self.workspace, self.fetcher.as_ref())?;
+        let document = ArtifactDocument::load(
+            locator,
+            &self.workspace,
+            self.fetcher.as_ref(),
+            DependencyResolutionMode::Strict,
+        )?;
         let summary = document.summary.clone();
 
         for dependency in document.dependencies {
             let child = self.visit(&dependency.locator)?;
-            self.record_edge(summary.clone(), child);
+            self.record_edge(summary.clone(), child, dependency.optional);
         }
 
         self.stack.pop();
@@ -420,20 +448,113 @@ impl Traversal {
         Ok(summary)
     }
 
-    fn record_edge(&mut self, parent: ArtifactSummary, child: ArtifactSummary) {
+    fn record_edge(&mut self, parent: ArtifactSummary, child: ArtifactSummary, optional: bool) {
         let upstream = DependencyEdge {
-            from: parent.clone(),
-            to: child.clone(),
+            from: parent,
+            to: child,
             relation: DependencyRelation::Upstream,
-        };
-        let downstream = DependencyEdge {
-            from: child,
-            to: parent,
-            relation: DependencyRelation::Downstream,
+            optional,
         };
         self.edges.insert(upstream);
-        self.edges.insert(downstream);
     }
+}
+
+struct WorkspaceInventory {
+    entries: Vec<InventoryEntry>,
+}
+
+impl WorkspaceInventory {
+    fn build(
+        workspace: &WorkspacePaths,
+        fetcher: Arc<dyn ContentFetcher>,
+    ) -> Result<Self, SpecmanError> {
+        let mut files = gather_workspace_artifacts(workspace)?;
+        files.sort();
+        files.dedup();
+
+        let mut entries = Vec::new();
+        for file in files {
+            let locator = ArtifactLocator::from_path(&file, workspace, None)?;
+            let document = ArtifactDocument::load(
+                &locator,
+                workspace,
+                fetcher.as_ref(),
+                DependencyResolutionMode::BestEffort,
+            )?;
+            entries.push(InventoryEntry {
+                summary: document.summary,
+                dependencies: document.dependencies,
+            });
+        }
+
+        Ok(Self { entries })
+    }
+
+    fn dependents_of(&self, target: &Path) -> Vec<InventoryDependent> {
+        let mut dependents = Vec::new();
+        for entry in &self.entries {
+            let mut match_optional = None;
+            for dependency in &entry.dependencies {
+                if let ArtifactLocator::File(path) = &dependency.locator {
+                    if path == target {
+                        let current = match_optional.unwrap_or(true);
+                        match_optional = Some(current && dependency.optional);
+                    }
+                }
+            }
+
+            if let Some(optional) = match_optional {
+                dependents.push(InventoryDependent {
+                    summary: entry.summary.clone(),
+                    optional,
+                });
+            }
+        }
+
+        dependents
+    }
+}
+
+#[derive(Clone)]
+struct InventoryEntry {
+    summary: ArtifactSummary,
+    dependencies: Vec<ArtifactDependency>,
+}
+
+#[derive(Clone)]
+struct InventoryDependent {
+    summary: ArtifactSummary,
+    optional: bool,
+}
+
+fn gather_workspace_artifacts(workspace: &WorkspacePaths) -> Result<Vec<PathBuf>, SpecmanError> {
+    let mut files = Vec::new();
+    collect_named_files(&workspace.spec_dir(), "spec.md", &mut files)?;
+    collect_named_files(&workspace.impl_dir(), "impl.md", &mut files)?;
+    collect_named_files(&workspace.scratchpad_dir(), "scratch.md", &mut files)?;
+    Ok(files)
+}
+
+fn collect_named_files(
+    root: &Path,
+    file_name: &str,
+    out: &mut Vec<PathBuf>,
+) -> Result<(), SpecmanError> {
+    if !root.is_dir() {
+        return Ok(());
+    }
+
+    for entry in fs::read_dir(root)? {
+        let entry = entry?;
+        let ty = entry.file_type()?;
+        if ty.is_dir() {
+            collect_named_files(&entry.path(), file_name, out)?;
+        } else if ty.is_file() && entry.file_name() == file_name {
+            out.push(entry.path());
+        }
+    }
+
+    Ok(())
 }
 
 impl ArtifactDocument {
@@ -441,6 +562,7 @@ impl ArtifactDocument {
         locator: &ArtifactLocator,
         workspace: &WorkspacePaths,
         fetcher: &dyn ContentFetcher,
+        mode: DependencyResolutionMode,
     ) -> Result<Self, SpecmanError> {
         let raw = locator.load(fetcher)?;
         let mut metadata = BTreeMap::new();
@@ -466,7 +588,7 @@ impl ArtifactDocument {
             let kind = infer_kind(front, locator);
             let version = parse_version(front.version.as_deref(), &mut metadata);
             let name = front.name.clone().unwrap_or_else(|| infer_name(locator));
-            let deps = resolve_dependencies(front, kind, locator, workspace)?;
+            let deps = resolve_dependencies(front, kind, locator, workspace, &mut metadata, mode)?;
             (name, version, kind, deps)
         } else {
             (
@@ -495,41 +617,115 @@ fn resolve_dependencies(
     kind: ArtifactKind,
     locator: &ArtifactLocator,
     workspace: &WorkspacePaths,
+    metadata: &mut BTreeMap<String, String>,
+    mode: DependencyResolutionMode,
 ) -> Result<Vec<ArtifactDependency>, SpecmanError> {
     let mut deps = Vec::new();
     match kind {
         ArtifactKind::Specification => {
             for entry in &front.dependencies {
-                let reference = match entry {
-                    DependencyEntry::Simple(value) => value.as_str(),
-                    DependencyEntry::Detailed(obj) => obj.reference.as_str(),
+                let (reference, optional) = match entry {
+                    DependencyEntry::Simple(value) => (value.as_str(), false),
+                    DependencyEntry::Detailed(obj) => {
+                        (obj.reference.as_str(), obj.optional.unwrap_or(false))
+                    }
                 };
-                let locator = resolve_dependency_locator(reference, locator, workspace)?;
-                deps.push(ArtifactDependency { locator });
+                let locator = match resolve_dependency_locator(reference, locator, workspace) {
+                    Ok(locator) => Some(locator),
+                    Err(err) => {
+                        if mode.is_strict() {
+                            return Err(err);
+                        }
+                        record_dependency_error(metadata, reference, &err);
+                        None
+                    }
+                };
+                let Some(locator) = locator else {
+                    continue;
+                };
+                deps.push(ArtifactDependency { locator, optional });
             }
         }
         ArtifactKind::Implementation => {
             if let Some(spec_ref) = &front.spec {
-                let locator = resolve_dependency_locator(spec_ref, locator, workspace)?;
-                deps.push(ArtifactDependency { locator });
+                let locator = match resolve_dependency_locator(spec_ref, locator, workspace) {
+                    Ok(locator) => Some(locator),
+                    Err(err) => {
+                        if mode.is_strict() {
+                            return Err(err);
+                        }
+                        record_dependency_error(metadata, spec_ref, &err);
+                        None
+                    }
+                };
+                if let Some(locator) = locator {
+                    deps.push(ArtifactDependency {
+                        locator,
+                        optional: false,
+                    });
+                }
             }
             for reference in &front.references {
-                let locator = resolve_dependency_locator(&reference.reference, locator, workspace)?;
-                deps.push(ArtifactDependency { locator });
+                let locator =
+                    match resolve_dependency_locator(&reference.reference, locator, workspace) {
+                        Ok(locator) => Some(locator),
+                        Err(err) => {
+                            if mode.is_strict() {
+                                return Err(err);
+                            }
+                            record_dependency_error(metadata, &reference.reference, &err);
+                            None
+                        }
+                    };
+                let Some(locator) = locator else {
+                    continue;
+                };
+                deps.push(ArtifactDependency {
+                    locator,
+                    optional: reference.optional.unwrap_or(false),
+                });
             }
         }
         ArtifactKind::ScratchPad => {
             if let Some(target) = &front.target {
-                let locator = resolve_scratch_target_locator(target, workspace)?;
-                deps.push(ArtifactDependency { locator });
+                let locator = match resolve_scratch_target_locator(target, workspace) {
+                    Ok(locator) => Some(locator),
+                    Err(err) => {
+                        if mode.is_strict() {
+                            return Err(err);
+                        }
+                        record_dependency_error(metadata, target, &err);
+                        None
+                    }
+                };
+                if let Some(locator) = locator {
+                    deps.push(ArtifactDependency {
+                        locator,
+                        optional: false,
+                    });
+                }
             }
             for entry in &front.dependencies {
-                let reference = match entry {
-                    DependencyEntry::Simple(value) => value.as_str(),
-                    DependencyEntry::Detailed(obj) => obj.reference.as_str(),
+                let (reference, optional) = match entry {
+                    DependencyEntry::Simple(value) => (value.as_str(), false),
+                    DependencyEntry::Detailed(obj) => {
+                        (obj.reference.as_str(), obj.optional.unwrap_or(false))
+                    }
                 };
-                let locator = resolve_scratch_dependency_locator(reference, workspace)?;
-                deps.push(ArtifactDependency { locator });
+                let locator = match resolve_scratch_dependency_locator(reference, workspace) {
+                    Ok(locator) => Some(locator),
+                    Err(err) => {
+                        if mode.is_strict() {
+                            return Err(err);
+                        }
+                        record_dependency_error(metadata, reference, &err);
+                        None
+                    }
+                };
+                let Some(locator) = locator else {
+                    continue;
+                };
+                deps.push(ArtifactDependency { locator, optional });
             }
         }
     }
@@ -648,126 +844,19 @@ fn resolve_scratch_dependency_locator(
     ArtifactLocator::from_path(slug_path, workspace, Some(workspace.root()))
 }
 
-fn collect_scratchpad_dependents(
-    root: &ArtifactSummary,
-    workspace: &WorkspacePaths,
-) -> Result<Vec<ArtifactSummary>, SpecmanError> {
-    if root.id.kind != ArtifactKind::ScratchPad {
-        return Ok(Vec::new());
-    }
-
-    let scratchpad_dir = workspace.scratchpad_dir();
-    if !scratchpad_dir.is_dir() {
-        return Ok(Vec::new());
-    }
-
-    let mut dependents = Vec::new();
-    let root_path = scratchpad_dir.join(&root.id.name).join("scratch.md");
-    let root_canonical = fs::canonicalize(&root_path).ok();
-
-    for entry in fs::read_dir(&scratchpad_dir)? {
-        let entry = entry?;
-        if !entry.file_type()?.is_dir() {
-            continue;
-        }
-
-        let scratch_file = entry.path().join("scratch.md");
-        if !scratch_file.is_file() {
-            continue;
-        }
-
-        let contents = fs::read_to_string(&scratch_file)?;
-        let (frontmatter, _) = front_matter::optional_front_matter(&contents);
-        let Some(frontmatter) = frontmatter else {
-            continue;
-        };
-
-        let raw: RawFrontMatter = match serde_yaml::from_str(frontmatter) {
-            Ok(value) => value,
-            Err(_) => continue,
-        };
-
-        if raw.work_type.is_none() {
-            continue;
-        }
-
-        let mut metadata = BTreeMap::new();
-        metadata.insert("locator".into(), scratch_file.display().to_string());
-        let version = parse_version(raw.version.as_deref(), &mut metadata);
-        let dependent_name = raw
-            .name
-            .clone()
-            .or_else(|| {
-                entry
-                    .path()
-                    .file_name()
-                    .and_then(|s| s.to_str())
-                    .map(String::from)
-            })
-            .unwrap_or_else(|| scratch_file.display().to_string());
-
-        if dependent_name == root.id.name {
-            continue;
-        }
-
-        if references_scratchpad(
-            &raw.dependencies,
-            &root.id.name,
-            root_canonical.as_deref(),
-            workspace,
-        )? {
-            dependents.push(ArtifactSummary {
-                id: ArtifactId {
-                    kind: ArtifactKind::ScratchPad,
-                    name: dependent_name,
-                },
-                version,
-                metadata,
-            });
-        }
-    }
-
-    Ok(dependents)
-}
-
-fn references_scratchpad(
-    dependencies: &[DependencyEntry],
-    root_slug: &str,
-    root_canonical: Option<&Path>,
-    workspace: &WorkspacePaths,
-) -> Result<bool, SpecmanError> {
-    for entry in dependencies {
-        let reference = match entry {
-            DependencyEntry::Simple(value) => value.as_str(),
-            DependencyEntry::Detailed(obj) => obj.reference.as_str(),
-        };
-
-        if reference == root_slug {
-            return Ok(true);
-        }
-
-        let locator = match resolve_scratch_dependency_locator(reference, workspace) {
-            Ok(locator) => locator,
-            Err(_) => continue,
-        };
-
-        if let ArtifactLocator::File(path) = locator {
-            if let Some(root_path) = root_canonical {
-                if path == root_path {
-                    return Ok(true);
-                }
-            } else if path
-                .parent()
-                .and_then(|parent| parent.file_name())
-                .and_then(|s| s.to_str())
-                == Some(root_slug)
-            {
-                return Ok(true);
-            }
-        }
-    }
-
-    Ok(false)
+fn record_dependency_error(
+    metadata: &mut BTreeMap<String, String>,
+    reference: &str,
+    err: &SpecmanError,
+) {
+    let entry = format!("{reference}: {err}");
+    metadata
+        .entry("dependency_errors".into())
+        .and_modify(|existing| {
+            existing.push_str(" | ");
+            existing.push_str(&entry);
+        })
+        .or_insert(entry);
 }
 
 fn path_contains_segment(path: &Path, needle: &str) -> bool {
@@ -891,8 +980,7 @@ dependencies:
         assert_eq!(tree.root.id.name, "specman-core");
         assert_eq!(tree.upstream.len(), 1);
         assert_eq!(tree.upstream[0].to.id.name, "specman-data-model");
-        assert_eq!(tree.downstream.len(), 1);
-        assert_eq!(tree.downstream[0].from.id.name, "specman-data-model");
+        assert!(tree.downstream.is_empty());
     }
 
     #[test]
@@ -965,10 +1053,71 @@ references:
             .iter()
             .map(|edge| edge.to.id.name.clone())
             .collect();
-        let expected_downstream: BTreeSet<_> =
-            ["spec-alpha-impl"].into_iter().map(String::from).collect();
-        assert_eq!(downstream_targets, expected_downstream);
-        assert_eq!(tree.aggregate.len(), 4);
+        assert!(downstream_targets.is_empty());
+        assert_eq!(tree.aggregate.len(), 2);
+    }
+
+    #[test]
+    fn dependency_tree_discovers_downstream_consumers() {
+        let temp = tempdir().unwrap();
+        let root = temp.path().join("workspace");
+        fs::create_dir_all(root.join(".specman")).unwrap();
+        fs::create_dir_all(root.join("spec/provider")).unwrap();
+        fs::create_dir_all(root.join("spec/consumer")).unwrap();
+
+        fs::write(
+            root.join("spec/provider/spec.md"),
+            "---\nname: provider\nversion: \"1.0.0\"\n---\n# Provider\n",
+        )
+        .unwrap();
+
+        fs::write(
+            root.join("spec/consumer/spec.md"),
+            "---\nname: consumer\nversion: \"1.0.0\"\ndependencies:\n  - ../provider/spec.md\n---\n# Consumer\n",
+        )
+        .unwrap();
+
+        let mapper =
+            FilesystemDependencyMapper::new(FilesystemWorkspaceLocator::new(root.to_path_buf()));
+        let tree = mapper
+            .dependency_tree_from_path(root.join("spec/provider/spec.md"))
+            .expect("provider tree");
+
+        assert_eq!(tree.downstream.len(), 1);
+        assert_eq!(tree.downstream[0].from.id.name, "consumer");
+        assert!(!tree.downstream[0].optional);
+        assert!(tree.has_blocking_dependents());
+    }
+
+    #[test]
+    fn optional_dependencies_do_not_block_deletions() {
+        let temp = tempdir().unwrap();
+        let root = temp.path().join("workspace");
+        fs::create_dir_all(root.join(".specman")).unwrap();
+        fs::create_dir_all(root.join("spec/subject")).unwrap();
+        fs::create_dir_all(root.join("spec/consumer")).unwrap();
+
+        fs::write(
+            root.join("spec/subject/spec.md"),
+            "---\nname: subject\nversion: \"1.0.0\"\n---\n# Subject\n",
+        )
+        .unwrap();
+
+        fs::write(
+            root.join("spec/consumer/spec.md"),
+            "---\nname: optional-consumer\nversion: \"1.0.0\"\ndependencies:\n  - ref: ../subject/spec.md\n    optional: true\n---\n# Consumer\n",
+        )
+        .unwrap();
+
+        let mapper =
+            FilesystemDependencyMapper::new(FilesystemWorkspaceLocator::new(root.to_path_buf()));
+        let tree = mapper
+            .dependency_tree_from_path(root.join("spec/subject/spec.md"))
+            .expect("subject tree");
+
+        assert_eq!(tree.downstream.len(), 1);
+        assert!(tree.downstream[0].optional);
+        assert!(!tree.has_blocking_dependents());
     }
 
     #[test]

@@ -458,6 +458,7 @@ mod tests {
             from: target_summary,
             to: root_summary.clone(),
             relation: DependencyRelation::Downstream,
+            optional: false,
         });
 
         let adapter = RecordingAdapter::default();
@@ -495,6 +496,7 @@ mod tests {
             from: dependent_summary,
             to: root_summary.clone(),
             relation: DependencyRelation::Downstream,
+            optional: false,
         });
 
         let adapter = RecordingAdapter::default();
@@ -532,6 +534,7 @@ mod tests {
             from: dependent_summary,
             to: root_summary.clone(),
             relation: DependencyRelation::Downstream,
+            optional: false,
         });
 
         let adapter = RecordingAdapter::default();

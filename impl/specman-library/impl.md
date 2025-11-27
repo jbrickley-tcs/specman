@@ -64,6 +64,7 @@ pub trait DependencyMapping {
 
 - `dependency_tree` returns the aggregate `DependencyTree` described in the specification, including transitive nodes for use in lifecycle enforcement.
 - `upstream` and `downstream` provide filtered projections needed for targeted impact analysis per [Dependency Mapping Services](../../spec/specman-core/spec.md#concept-dependency-mapping-services).
+- Each `DependencyEdge` carries an `optional` flag derived from the source artifact's front matter. Optional edges remain visible for observability, but lifecycle automation ignores them when determining whether a deletion is blocked.
 
 ### Dependency Mapping Runtime
 
@@ -71,6 +72,8 @@ pub trait DependencyMapping {
 - `FilesystemDependencyMapper::new(locator)` bootstraps the mapper with the default HTTPS client. Tooling operating in restricted environments can inject a custom fetcher (e.g., offline cache, mocked HTTP) via `FilesystemDependencyMapper::with_fetcher(locator, fetcher)`.
 - Callers that already know the artifact type drive traversal through `dependency_tree(&ArtifactId)`, while ad-hoc analyses can use `dependency_tree_from_path` or `dependency_tree_from_url`. All entry points parse YAML front matter, infer identity when metadata is missing, and annotate `ArtifactSummary.metadata_status` so downstream consumers can detect fallbacks.
 - Cycle detection is enforced centrally inside the traversal engine; errors return `SpecmanError::Dependency` payloads that include the offending path and a serialized partial tree, giving lifecycle controllers enough context to block deletion flows safely.
+- Downstream projections now derive from a workspace-wide dependency inventory rather than synthetic reverse edges. The mapper walks every `spec/`, `impl/`, and `.specman/scratchpad` artifact once per request, captures canonical dependency locators, and emits downstream edges only when another artifact actually references the root. HTTPS-only documents are intentionally excluded from this reverse scan to keep traversal deterministic.
+- Optional dependencies and references are treated as informational signals. They appear in dependency views but never cause `DependencyTree::has_blocking_dependents` to return `true`, aligning runtime behavior with the [SpecMan Core](../../spec/specman-core/spec.md) lifecycle guardrails.
 
 ```rust
 pub fn render_template(locator: &TemplateLocator, tokens: &TokenMap) -> Result<RenderedTemplate, SpecmanError> {

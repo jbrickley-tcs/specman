@@ -19,7 +19,8 @@ fn spec_dependencies_defaults_to_downstream() -> Result<(), Box<dyn std::error::
         .stdout(contains(
             "Dependency tree (downstream) for specification 'alpha-spec'",
         ))
-        .stdout(contains("spec beta-spec"));
+        .stdout(contains("scratch alpha-notes"))
+        .stdout(contains("impl alpha-spec-rust"));
     Ok(())
 }
 

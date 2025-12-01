@@ -94,6 +94,12 @@ A work type can be one of the following:
   - The object representation of this work type MUST follow this form:
     - `refactored_headings`: a list of headings that have been refactored.
       - each refactored heading MUST be represented as a markdown fragment that exists within the specification
+- `fix`: a correction applied to an implementation to address defects without modifying specifications
+  - The target artifact MUST be an implementation and MUST NOT be a specification or external reference.
+  - SHOULD be used when the implementation needs remediation (bug fixes, defects) independent of specification updates.
+  - The object representation of this work type MUST follow this form:
+    - `fixed_headings`: a list of headings for concepts or entities impacted by the fix.
+      - each fixed heading MUST be represented as a markdown fragment that exists within the implementation's referenced specifications.
 
 
 
@@ -122,7 +128,7 @@ Frontmatter fields MUST be formatted as below.
 - `branch`: the git branch
   - this field MAY be omitted if there is no Git workspace.
 - `work_type`: the object representing the work type
-  - `draft|revision|feat|ref`: a field on the object representing the work type.
+  - `draft|revision|feat|ref|fix`: a field on the object representing the work type.
 - `dependencies`: a list of [dependencies](#scratch-pad-dependencies).
   - this field MAY be omitted if this scratch pad does not depend on other scratch pads.
 

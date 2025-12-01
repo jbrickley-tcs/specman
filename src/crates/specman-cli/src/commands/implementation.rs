@@ -107,11 +107,12 @@ fn create_impl(session: &CliSession, matches: &ArgMatches) -> Result<CommandResu
         ));
     }
 
-    let descriptor = session.templates.descriptor(TemplateKind::Implementation)?;
+    let resolved = session.templates.descriptor(TemplateKind::Implementation)?;
     let mut rendered = session
         .template_engine
-        .render(&descriptor, &TokenMap::new())
+        .render(&resolved.descriptor, &TokenMap::new())
         .map_err(CliError::from)?;
+    rendered.provenance = Some(resolved.provenance);
     rendered.body =
         update_impl_document(&rendered.body, &name, &resolved_spec, &language, &location)?;
 

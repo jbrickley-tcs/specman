@@ -6,13 +6,16 @@ use crate::dependency_tree::{ArtifactId, DependencyMapping, DependencyTree};
 use crate::error::SpecmanError;
 use crate::persistence::{ArtifactRemovalStore, RemovedArtifact};
 use crate::scratchpad::ScratchPadProfile;
-use crate::template::{RenderedTemplate, TemplateDescriptor, TemplateEngine, TokenMap};
+use crate::template::{
+    RenderedTemplate, TemplateDescriptor, TemplateEngine, TemplateProvenance, TokenMap,
+};
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct CreationRequest {
     pub target: ArtifactId,
     pub template: TemplateDescriptor,
     pub tokens: TokenMap,
+    pub provenance: Option<TemplateProvenance>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
@@ -83,7 +86,8 @@ where
 {
     fn plan_creation(&self, request: CreationRequest) -> Result<CreationPlan, SpecmanError> {
         let dependencies = self.mapping.dependency_tree(&request.target)?;
-        let rendered = self.templates.render(&request.template, &request.tokens)?;
+        let mut rendered = self.templates.render(&request.template, &request.tokens)?;
+        rendered.provenance = request.provenance.clone();
         self.adapter.save_dependency_tree(dependencies.clone())?;
         Ok(CreationPlan {
             rendered,
@@ -101,9 +105,10 @@ where
     }
 
     fn plan_scratchpad(&self, profile: ScratchPadProfile) -> Result<ScratchPadPlan, SpecmanError> {
-        let rendered = self
+        let mut rendered = self
             .templates
             .render(&profile.template, &profile.token_map())?;
+        rendered.provenance = profile.provenance.clone();
         Ok(ScratchPadPlan { rendered, profile })
     }
 
@@ -148,7 +153,7 @@ mod tests {
         ArtifactKind, ArtifactSummary, DependencyEdge, DependencyRelation,
     };
     use crate::persistence::WorkspacePersistence;
-    use crate::scratchpad::ScratchPadProfile;
+    use crate::scratchpad::{ScratchPadProfile, ScratchPadProfileKind};
     use crate::template::{TemplateScenario, TokenMap};
     use crate::workspace::FilesystemWorkspaceLocator;
     use std::collections::BTreeMap;
@@ -241,6 +246,7 @@ mod tests {
             Ok(RenderedTemplate {
                 body: format!("# artifact\nscenario: {:?}\n", descriptor.scenario),
                 metadata: descriptor.clone(),
+                provenance: None,
             })
         }
     }
@@ -278,6 +284,7 @@ mod tests {
                 ..Default::default()
             },
             tokens: TokenMap::new(),
+            provenance: None,
         };
 
         let plan = controller.plan_creation(request).expect("creation plan");
@@ -305,20 +312,22 @@ mod tests {
 
         let (controller, _adapter) = controller();
         let profile = ScratchPadProfile {
+            kind: ScratchPadProfileKind::Ref,
             name: "workspace-template-persist".into(),
             template: TemplateDescriptor {
                 scenario: TemplateScenario::ScratchPad,
                 ..Default::default()
             },
+            provenance: None,
             configuration: BTreeMap::new(),
         };
-        let profile_name = profile.name.clone();
+        let profile_slug = profile.slug().to_string();
 
         let plan = controller.plan_scratchpad(profile).expect("scratch plan");
         let persistence = WorkspacePersistence::new(FilesystemWorkspaceLocator::new(start.clone()));
         let artifact = ArtifactId {
             kind: ArtifactKind::ScratchPad,
-            name: profile_name,
+            name: profile_slug,
         };
 
         let persisted = persistence

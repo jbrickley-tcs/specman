@@ -8,6 +8,7 @@ pub mod persistence;
 pub mod scratchpad;
 pub mod shared_function;
 pub mod template;
+pub mod template_catalog;
 pub mod workspace;
 
 pub use adapter::{DataModelAdapter, InMemoryAdapter};
@@ -30,8 +31,9 @@ pub use scratchpad::ScratchPadProfile;
 pub use shared_function::{EntityKind, SchemaRef, SemVer};
 pub use template::{
     MarkdownTemplateEngine, RenderedTemplate, TemplateDescriptor, TemplateEngine, TemplateLocator,
-    TemplateScenario, TokenMap,
+    TemplateProvenance, TemplateScenario, TemplateTier, TokenMap,
 };
+pub use template_catalog::{ResolvedTemplate, TemplateCatalog};
 pub use workspace::{
     FilesystemWorkspaceLocator, WorkspaceLocator, WorkspacePaths, discover as discover_workspace,
 };

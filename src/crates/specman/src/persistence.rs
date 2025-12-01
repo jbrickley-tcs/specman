@@ -4,7 +4,8 @@ use std::sync::Arc;
 
 use crate::dependency_tree::{ArtifactId, ArtifactKind};
 use crate::error::SpecmanError;
-use crate::template::RenderedTemplate;
+use crate::front_matter::split_front_matter;
+use crate::template::{RenderedTemplate, TemplateProvenance};
 use crate::workspace::{WorkspaceLocator, WorkspacePaths};
 
 /// Result of persisting a rendered template to the workspace filesystem.
@@ -44,7 +45,12 @@ impl<L: WorkspaceLocator> WorkspacePersistence<L> {
 
         let workspace = self.locator.workspace()?;
         let target_path = resolve_target_path(artifact, &workspace)?;
-        write_body(&target_path, &rendered.body)?;
+        let output = if let Some(provenance) = &rendered.provenance {
+            inject_provenance(&rendered.body, provenance)?
+        } else {
+            rendered.body.clone()
+        };
+        write_body(&target_path, &output)?;
 
         Ok(PersistedArtifact {
             artifact: artifact.clone(),
@@ -123,6 +129,30 @@ fn write_body(path: &Path, body: &str) -> Result<(), SpecmanError> {
     Ok(())
 }
 
+fn inject_provenance(body: &str, provenance: &TemplateProvenance) -> Result<String, SpecmanError> {
+    let front = split_front_matter(body)?;
+    let mut mapping: serde_yaml::Mapping = serde_yaml::from_str(front.yaml)
+        .map_err(|err| SpecmanError::Template(format!("invalid front matter YAML: {err}")))?;
+    let prov_value = serde_yaml::to_value(provenance).map_err(|err| {
+        SpecmanError::Serialization(format!("unable to encode template provenance: {err}"))
+    })?;
+    mapping.insert(
+        serde_yaml::Value::String("template_source".into()),
+        prov_value,
+    );
+    let mut serialized = serde_yaml::to_string(&mapping).map_err(|err| {
+        SpecmanError::Serialization(format!("unable to serialize front matter: {err}"))
+    })?;
+    if let Some(stripped) = serialized.strip_prefix("---\n") {
+        serialized = stripped.to_string();
+    }
+    if serialized.ends_with("...\n") {
+        serialized.truncate(serialized.len() - 4);
+    }
+    let updated = format!("---\n{}---\n{}", serialized, front.body);
+    Ok(updated)
+}
+
 fn ensure_rendered_tokens_resolved(body: &str) -> Result<(), SpecmanError> {
     if body.contains("{{") {
         return Err(SpecmanError::Template(
@@ -173,6 +203,7 @@ mod tests {
         RenderedTemplate {
             body: body.to_string(),
             metadata: TemplateDescriptor::default(),
+            provenance: None,
         }
     }
 

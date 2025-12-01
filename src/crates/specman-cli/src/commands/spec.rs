@@ -89,11 +89,12 @@ fn create_spec(session: &CliSession, matches: &ArgMatches) -> Result<CommandResu
         ));
     }
 
-    let descriptor = session.templates.descriptor(TemplateKind::Specification)?;
+    let resolved = session.templates.descriptor(TemplateKind::Specification)?;
     let mut rendered = session
         .template_engine
-        .render(&descriptor, &TokenMap::new())
+        .render(&resolved.descriptor, &TokenMap::new())
         .map_err(CliError::from)?;
+    rendered.provenance = Some(resolved.provenance);
     rendered.body = update_spec_document(&rendered.body, &name, &version, &dependencies)?;
 
     let artifact = ArtifactId {

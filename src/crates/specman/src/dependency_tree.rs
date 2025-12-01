@@ -817,11 +817,18 @@ fn resolve_scratch_target_locator(
         return ArtifactLocator::from_url(reference);
     }
 
-    if let Some(base_dir) = scratch_locator.base_dir() {
-        return ArtifactLocator::from_path(reference, workspace, Some(base_dir.as_path()));
+    let primary = ArtifactLocator::from_path(reference, workspace, Some(workspace.root()));
+    match primary {
+        Ok(locator) => Ok(locator),
+        Err(SpecmanError::Io(err)) if err.kind() == std::io::ErrorKind::NotFound => {
+            if let Some(base_dir) = scratch_locator.base_dir() {
+                ArtifactLocator::from_path(reference, workspace, Some(base_dir.as_path()))
+            } else {
+                Err(SpecmanError::Io(err))
+            }
+        }
+        Err(err) => Err(err),
     }
-
-    ArtifactLocator::from_path(reference, workspace, Some(workspace.root()))
 }
 
 fn resolve_scratch_dependency_locator(

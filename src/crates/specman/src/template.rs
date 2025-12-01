@@ -10,6 +10,34 @@ use crate::error::SpecmanError;
 
 pub type TokenMap = BTreeMap<String, serde_json::Value>;
 
+/// Identifies the tier that produced a template.
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+pub enum TemplateTier {
+    WorkspaceOverride,
+    PointerFile,
+    PointerUrl,
+    EmbeddedDefault,
+}
+
+impl Default for TemplateTier {
+    fn default() -> Self {
+        TemplateTier::EmbeddedDefault
+    }
+}
+
+/// Records provenance metadata for persisted templates.
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, Default, PartialEq, Eq)]
+pub struct TemplateProvenance {
+    pub tier: TemplateTier,
+    pub locator: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pointer: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_modified: Option<String>,
+}
+
 /// Supported template scenarios described by the specification.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub enum TemplateScenario {
@@ -51,6 +79,8 @@ pub struct TemplateDescriptor {
 pub struct RenderedTemplate {
     pub body: String,
     pub metadata: TemplateDescriptor,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provenance: Option<TemplateProvenance>,
 }
 
 /// Trait for engines that render templates into Markdown text.
@@ -81,6 +111,7 @@ impl TemplateEngine for MarkdownTemplateEngine {
                 Ok(RenderedTemplate {
                     body,
                     metadata: descriptor.clone(),
+                    provenance: None,
                 })
             }
             TemplateLocator::Url(url) => Err(SpecmanError::Template(format!(

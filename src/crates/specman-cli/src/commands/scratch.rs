@@ -119,11 +119,12 @@ fn create_scratchpad(
         .cloned()
         .unwrap_or_else(|| default_branch(&target, work_key, &name));
 
-    let descriptor = session.templates.descriptor(TemplateKind::Scratch)?;
+    let resolved = session.templates.descriptor(TemplateKind::Scratch)?;
     let mut rendered = session
         .template_engine
-        .render(&descriptor, &TokenMap::new())
+        .render(&resolved.descriptor, &TokenMap::new())
         .map_err(CliError::from)?;
+    rendered.provenance = Some(resolved.provenance);
     rendered.body = update_scratch_document(&rendered.body, &target, &branch, work_key)?;
 
     let artifact = ArtifactId {

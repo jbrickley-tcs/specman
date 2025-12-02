@@ -1,6 +1,6 @@
 [package]
 name = "specman"
-version = "1.0.0"
+version = "1.0.1"
 edition = "2024"
 authors = ["SpecMan Authors"]
 description = "SpecMan runtime library for dependency mapping, templating, and lifecycle automation."

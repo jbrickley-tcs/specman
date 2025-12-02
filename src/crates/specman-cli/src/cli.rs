@@ -94,6 +94,7 @@ fn build_cli() -> Command {
         .subcommand(commands::spec::command())
         .subcommand(commands::implementation::command())
         .subcommand(commands::scratch::command())
+        .subcommand(commands::templates::command())
 }
 
 /// Delegates parsed subcommands to their respective modules, ensuring the Lifecycle
@@ -108,6 +109,7 @@ fn dispatch(
         Some(("spec", sub)) => commands::spec::run(session, sub),
         Some(("impl", sub)) => commands::implementation::run(session, sub),
         Some(("scratch", sub)) => commands::scratch::run(session, sub),
+        Some(("template", sub)) => commands::templates::run(session, sub),
         _ => Err(CliError::new("missing command", ExitStatus::Usage)),
     }
 }

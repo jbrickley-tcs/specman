@@ -38,6 +38,20 @@ The workspace layout should now resemble:
   templates/
 ```
 
+### Manage Template Pointers with the CLI
+
+Once the workspace exists, prefer the `specman template` command group over manual edits when you need to override or remove template pointers:
+
+```bash
+# Point specification scaffolding at a workspace-specific template
+specman template set --kind spec --locator templates/spec/custom.md
+
+# Revert the implementation pointer so the CLI falls back to overrides or embedded defaults
+specman template remove --kind impl
+```
+
+Both subcommands validate locators (workspace-relative paths or HTTPS URLs), acquire the filesystem locks required by SpecMan Core, refresh cached remote templates, and print provenance metadata describing which tier (override, pointer file, embedded default) will be used on the next `spec`, `impl`, or `scratch` command. If you remove a pointer, the CLI rewrites the embedded fallback cache immediately so subsequent runs stay deterministic.
+
 ## 4. Author Specifications, Implementations, and Scratch Pads
 1. **Create a specification**
    ```bash

@@ -3,9 +3,11 @@ use std::process::ExitCode;
 
 use serde_json::json;
 use specman::dependency_tree::{ArtifactKind, ArtifactSummary, DependencyEdge, DependencyTree};
+use specman::template::TemplateLocator;
 
 use crate::commands::CommandResult;
 use crate::commands::dependencies::{self, DependencyScope, DependencyView};
+use crate::commands::templates::PointerAction;
 use crate::error::CliError;
 
 pub enum OutputFormat {
@@ -160,6 +162,30 @@ fn print_text(result: &CommandResult) {
         CommandResult::DependencyTree { scope, view, tree } => {
             print_dependency_view(*scope, *view, tree);
         }
+        CommandResult::TemplatePointer { report } => {
+            let action_label = match report.action {
+                PointerAction::Set => "Updated",
+                PointerAction::Remove => "Removed",
+            };
+            println!(
+                "{} pointer for {} (tier: {:?})",
+                action_label, report.kind, report.provenance.tier
+            );
+            println!(
+                "  Locator: {}",
+                describe_template_locator(&report.descriptor.locator)
+            );
+            println!("  Provenance locator: {}", report.provenance.locator);
+            if let Some(pointer) = &report.provenance.pointer {
+                println!("  Pointer file: {}", pointer);
+            }
+            if let Some(cache_path) = &report.provenance.cache_path {
+                println!("  Cache: {}", cache_path);
+            }
+            if let Some(last_modified) = &report.provenance.last_modified {
+                println!("  Last-Modified: {}", last_modified);
+            }
+        }
     }
 }
 
@@ -310,5 +336,12 @@ fn capitalize(input: &str) -> String {
     match chars.next() {
         Some(first) => format!("{}{}", first.to_ascii_uppercase(), chars.as_str()),
         None => String::new(),
+    }
+}
+
+fn describe_template_locator(locator: &TemplateLocator) -> String {
+    match locator {
+        TemplateLocator::FilePath(path) => path.display().to_string(),
+        TemplateLocator::Url(url) => url.clone(),
     }
 }

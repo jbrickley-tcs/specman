@@ -145,6 +145,26 @@ This document uses the normative keywords defined in [RFC 2119](https://www.rfc-
 - Output MUST show the scratch pad as the root plus the resolved specification or implementation dependencies underneath using the same deterministic tree formatting as other command groups; an optional `--json` flag MAY emit structured output that mirrors the tree content.
 - Successful runs MUST exit with `EX_OK`. Failures resolving the pad, its target, or dependencies MUST bubble the closest `sysexits` constant returned by the dependency builder (for example `EX_NOINPUT` when the target file is missing).
 
+##### `template` command group
+
+- Scope: pointer lifecycle operations for `.specman/templates/{SPEC,IMPL,SCRATCH}` that wrap the Template Orchestration helpers mandated by [SpecMan Core](../specman-core/spec.md#concept-template-orchestration).
+- Commands MUST treat the Template Catalog as authoritative—no direct filesystem mutations outside the helper APIs—and MUST surface provenance metadata (tier, pointer file, cache path) returned by the helpers so operators can audit effective template sources.
+- CLI output MUST describe the affected template kind (`spec`, `impl`, or `scratch`), the resolved locator, and any cache refreshes that occurred so automation can react deterministically.
+
+###### `template set`
+
+- MUST accept a required `--kind <spec|impl|scratch>` flag identifying the pointer (`SPEC`, `IMPL`, `SCRATCH`) to mutate. Unknown kinds MUST raise `EX_USAGE`.
+- MUST accept a required `--locator <value>` flag whose value is validated by the Template Catalog (workspace-relative file under the workspace root or HTTPS URL). Unsupported schemes, missing files, or workspace escapes MUST bubble as `EX_USAGE` or `EX_DATAERR` depending on the underlying error.
+- After validation, MUST delegate to SpecMan Core to write the uppercase pointer file atomically, acquire any required filesystem locks, refresh remote caches, and rewrite embedded fallbacks per the specification. The CLI MUST NOT attempt to reimplement these behaviors.
+- On success, MUST emit the returned `ResolvedTemplate`/`TemplateProvenance` to stdout (text and JSON) and exit with `EX_OK`. Failures MUST propagate the helper’s error classification to the corresponding `sysexits` code.
+
+###### `template remove`
+
+- MUST accept the same `--kind <spec|impl|scratch>` flag as `template set` and reject other arguments.
+- MUST call the Template Catalog removal helper, which deletes the pointer file, invalidates remote caches, rewrites the embedded fallback cache, and returns the new provenance (usually workspace override or embedded default). The CLI MUST surface this provenance verbatim.
+- If the requested pointer does not exist, the command MUST fail with `EX_DATAERR` and an actionable message describing how to create the pointer with `template set`.
+- Successful removals MUST exit with `EX_OK`; filesystem or validation errors MUST bubble to the closest `sysexits` constant returned by the helper.
+
 ### Concept: Data Model Activation
 
 - The CLI MUST bundle a SpecMan data-model implementation (adapter) as an internal library so every installation has a compliant default aligned with the major version of `specman-data-model` declared in this specification.

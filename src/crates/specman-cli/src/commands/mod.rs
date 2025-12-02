@@ -8,6 +8,7 @@ pub mod implementation;
 pub mod scratch;
 pub mod spec;
 pub mod status;
+pub mod templates;
 
 #[derive(Debug, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -60,6 +61,9 @@ pub enum CommandResult {
         scope: dependencies::DependencyScope,
         view: dependencies::DependencyView,
         tree: DependencyTree,
+    },
+    TemplatePointer {
+        report: templates::PointerReport,
     },
 }
 
